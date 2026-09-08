@@ -1,0 +1,11 @@
+# 构建产物
+build/
+
+# IDE / 系统
+.idea/
+*.iml
+.DS_Store
+local.properties
+
+# 日志
+*.log
