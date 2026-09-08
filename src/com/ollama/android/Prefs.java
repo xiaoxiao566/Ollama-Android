@@ -42,6 +42,73 @@ public final class Prefs {
             "mirostat_tau", "mirostat_eta", "tfs_z"
     };
 
+    // ---- ollama run 选项（设置页「运行选项」卡片） ----
+    public static final String KEY_KEEP_ALIVE = "keep_alive";
+    public static final String KEY_SYSTEM_PROMPT = "system_prompt";
+
+    /** --verbose：显示推理速度（对话末尾追加 tokens/s 统计）。 */
+    public static boolean verbose(Context c) {
+        return sp(c).getBoolean("verbose", false);
+    }
+
+    public static void setVerbose(Context c, boolean v) {
+        sp(c).edit().putBoolean("verbose", v).apply();
+    }
+
+    /** --nowordwrap：输出不自动折行（横向滚动查看原文）。 */
+    public static boolean noWordWrap(Context c) {
+        return sp(c).getBoolean("nowordwrap", false);
+    }
+
+    public static void setNoWordWrap(Context c, boolean v) {
+        sp(c).edit().putBoolean("nowordwrap", v).apply();
+    }
+
+    /** --insecure：允许不安全的连接（拉取模型时不校验证书）。 */
+    public static boolean insecure(Context c) {
+        return sp(c).getBoolean("insecure", false);
+    }
+
+    public static void setInsecure(Context c, boolean v) {
+        sp(c).edit().putBoolean("insecure", v).apply();
+    }
+
+    /** --think：显示思考过程（默认开）。 */
+    public static boolean think(Context c) {
+        return sp(c).getBoolean("think", true);
+    }
+
+    public static void setThink(Context c, boolean v) {
+        sp(c).edit().putBoolean("think", v).apply();
+    }
+
+    /** --hidethinking：隐藏思考过程（与 think 互斥，开启时优先）。 */
+    public static boolean hideThinking(Context c) {
+        return sp(c).getBoolean("hidethinking", false);
+    }
+
+    public static void setHideThinking(Context c, boolean v) {
+        sp(c).edit().putBoolean("hidethinking", v).apply();
+    }
+
+    /** --experimental：启用实验性特性。 */
+    public static boolean experimental(Context c) {
+        return sp(c).getBoolean("experimental", false);
+    }
+
+    public static void setExperimental(Context c, boolean v) {
+        sp(c).edit().putBoolean("experimental", v).apply();
+    }
+
+    /** --experimental-websearch：启用实验性网络搜索。 */
+    public static boolean experimentalWebsearch(Context c) {
+        return sp(c).getBoolean("experimental_websearch", false);
+    }
+
+    public static void setExperimentalWebsearch(Context c, boolean v) {
+        sp(c).edit().putBoolean("experimental_websearch", v).apply();
+    }
+
     private static SharedPreferences sp(Context c) {
         return c.getApplicationContext().getSharedPreferences(FILE, Context.MODE_PRIVATE);
     }

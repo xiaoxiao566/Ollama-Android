@@ -18,6 +18,7 @@ import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -139,6 +140,7 @@ public class SettingsActivity extends Activity {
         body.addView(buildGpuCard());
         body.addView(buildBasicCard());
         body.addView(buildAdvancedCard());
+        body.addView(buildRunOptionsCard());
         body.addView(buildSaveButton());
 
         scroll.addView(body, new ViewGroup.LayoutParams(
@@ -284,6 +286,136 @@ public class SettingsActivity extends Activity {
         arrow.setText("\u25BC");
     }
 
+    // ================= 「运行选项」：ollama run 后缀 =================
+
+    private Switch swVerbose, swNoWordWrap, swInsecure, swThink, swHideThinking,
+            swExperimental, swWebSearch;
+    private EditText keepAliveEdit, systemEdit;
+
+    private View buildRunOptionsCard() {
+        LinearLayout card = card();
+        card.setPadding(dp(16), dp(14), dp(16), dp(14));
+        card.setOrientation(LinearLayout.VERTICAL);
+
+        TextView label = new TextView(this);
+        label.setText("模型运行选项");
+        label.setTextSize(14);
+        label.setTypeface(null, Typeface.BOLD);
+        label.setTextColor(C_TEXT);
+        card.addView(label);
+
+        TextView sub = new TextView(this);
+        sub.setText("对应 ollama run 的命令行后缀，扩展模型使用方式");
+        sub.setTextSize(12);
+        sub.setTextColor(C_TEXT_SUB);
+        sub.setPadding(0, dp(2), 0, dp(6));
+        card.addView(sub);
+
+        swVerbose = new Switch(this);
+        card.addView(switchRow("显示推理速度",
+                "--verbose：对话末尾显示 tokens/s 速度统计", swVerbose));
+        swNoWordWrap = new Switch(this);
+        card.addView(switchRow("不自动换行",
+                "--nowordwrap：输出不折行，横向滚动查看原文", swNoWordWrap));
+        swInsecure = new Switch(this);
+        card.addView(switchRow("允许不安全连接",
+                "--insecure：拉取模型时不校验证书", swInsecure));
+        swThink = new Switch(this);
+        card.addView(switchRow("显示思考过程",
+                "--think：展示模型的思考内容", swThink));
+        swHideThinking = new Switch(this);
+        card.addView(switchRow("隐藏思考过程",
+                "--hidethinking：不展示思考内容（优先于“显示思考过程”）", swHideThinking));
+        swExperimental = new Switch(this);
+        card.addView(switchRow("启用实验特性",
+                "--experimental：启用 ollama 实验性功能", swExperimental));
+        swWebSearch = new Switch(this);
+        card.addView(switchRow("实验性网络搜索",
+                "--experimental-websearch：启用实验性联网搜索", swWebSearch));
+
+        // --keepalive（模型驻留时长）
+        LinearLayout kaWrap = new LinearLayout(this);
+        kaWrap.setOrientation(LinearLayout.VERTICAL);
+        kaWrap.setPadding(0, dp(8), 0, dp(2));
+        TextView kaLabel = new TextView(this);
+        kaLabel.setText("--keepalive（模型驻留时长）");
+        kaLabel.setTextSize(13);
+        kaLabel.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        kaLabel.setTextColor(C_TEXT);
+        kaWrap.addView(kaLabel);
+        keepAliveEdit = new EditText(this);
+        keepAliveEdit.setHint("如 5m / 30m / -1（永久驻留）/ 0（用完即卸）");
+        keepAliveEdit.setSingleLine(true);
+        keepAliveEdit.setTextSize(15);
+        keepAliveEdit.setTextColor(C_TEXT);
+        keepAliveEdit.setHintTextColor(C_TEXT_SUB);
+        keepAliveEdit.setPadding(dp(12), dp(10), dp(12), dp(10));
+        keepAliveEdit.setBackground(round(0xFFF3F4F6, dp(12)));
+        keepAliveEdit.setTag(Prefs.KEY_KEEP_ALIVE);
+        kaWrap.addView(keepAliveEdit, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        card.addView(kaWrap);
+        allFields.add(keepAliveEdit);
+
+        // --system（自定义系统提示词）
+        LinearLayout sysWrap = new LinearLayout(this);
+        sysWrap.setOrientation(LinearLayout.VERTICAL);
+        sysWrap.setPadding(0, dp(6), 0, dp(2));
+        TextView sysLabel = new TextView(this);
+        sysLabel.setText("--system（自定义系统提示词）");
+        sysLabel.setTextSize(13);
+        sysLabel.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        sysLabel.setTextColor(C_TEXT);
+        sysWrap.addView(sysLabel);
+        systemEdit = new EditText(this);
+        systemEdit.setHint("例如：你是一个友好的助手，用中文回答");
+        systemEdit.setGravity(Gravity.TOP);
+        systemEdit.setMinLines(3);
+        systemEdit.setTextSize(15);
+        systemEdit.setTextColor(C_TEXT);
+        systemEdit.setHintTextColor(C_TEXT_SUB);
+        systemEdit.setPadding(dp(12), dp(10), dp(12), dp(10));
+        systemEdit.setBackground(round(0xFFF3F4F6, dp(12)));
+        systemEdit.setTag(Prefs.KEY_SYSTEM_PROMPT);
+        sysWrap.addView(systemEdit, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        card.addView(sysWrap);
+        allFields.add(systemEdit);
+
+        return card;
+    }
+
+    /** 一个「文字说明 + Switch」行。 */
+    private LinearLayout switchRow(String title, String desc, Switch sw) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(4), 0, dp(4));
+
+        LinearLayout textWrap = new LinearLayout(this);
+        textWrap.setOrientation(LinearLayout.VERTICAL);
+        textWrap.setLayoutParams(new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView t = new TextView(this);
+        t.setText(title);
+        t.setTextSize(14);
+        t.setTypeface(null, Typeface.BOLD);
+        t.setTextColor(C_TEXT);
+        textWrap.addView(t);
+
+        TextView d = new TextView(this);
+        d.setText(desc);
+        d.setTextSize(11);
+        d.setTextColor(C_TEXT_SUB);
+        d.setPadding(0, dp(1), 0, 0);
+        textWrap.addView(d);
+
+        row.addView(textWrap);
+        row.addView(sw);
+        return row;
+    }
+
     // ================= 字段 / 保存 =================
 
     private View paramField(Param p) {
@@ -389,6 +521,14 @@ public class SettingsActivity extends Activity {
         else if (Prefs.GPU_OPENCL.equals(gpu)) rOpencl.setChecked(true);
         else rCpu.setChecked(true);
 
+        swVerbose.setChecked(Prefs.verbose(this));
+        swNoWordWrap.setChecked(Prefs.noWordWrap(this));
+        swInsecure.setChecked(Prefs.insecure(this));
+        swThink.setChecked(Prefs.think(this));
+        swHideThinking.setChecked(Prefs.hideThinking(this));
+        swExperimental.setChecked(Prefs.experimental(this));
+        swWebSearch.setChecked(Prefs.experimentalWebsearch(this));
+
         for (EditText e : allFields) {
             String key = (String) e.getTag();
             e.setText(Prefs.getStr(this, key));
@@ -400,6 +540,14 @@ public class SettingsActivity extends Activity {
         if (rVulkan.isChecked()) gpu = Prefs.GPU_VULKAN;
         else if (rOpencl.isChecked()) gpu = Prefs.GPU_OPENCL;
         Prefs.setGpuBackend(this, gpu);
+
+        Prefs.setVerbose(this, swVerbose.isChecked());
+        Prefs.setNoWordWrap(this, swNoWordWrap.isChecked());
+        Prefs.setInsecure(this, swInsecure.isChecked());
+        Prefs.setThink(this, swThink.isChecked());
+        Prefs.setHideThinking(this, swHideThinking.isChecked());
+        Prefs.setExperimental(this, swExperimental.isChecked());
+        Prefs.setExperimentalWebsearch(this, swWebSearch.isChecked());
 
         for (EditText e : allFields) {
             String key = (String) e.getTag();

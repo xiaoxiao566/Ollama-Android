@@ -619,15 +619,33 @@ public class MainActivity extends Activity {
             @Override public void run() {
                 try {
                     String opts = buildOptionsJson();
-                    String body = "{\"model\":\"" + escape(model)
-                            + "\",\"messages\":[{\"role\":\"user\",\"content\":\"" + escape(prompt)
-                            + "\"}],\"stream\":false"
-                            + (opts.isEmpty() ? "" : ",\"options\":{" + opts + "}")
-                            + "}";
-                    String resp = post("/api/chat", body);
+                    StringBuilder body = new StringBuilder();
+                    body.append("{\"model\":\"").append(escape(model)).append("\"");
+                    body.append(",\"messages\":[{\"role\":\"user\",\"content\":\"")
+                            .append(escape(prompt)).append("\"}]");
+                    body.append(",\"stream\":false");
+                    if (!opts.isEmpty()) {
+                        body.append(",\"options\":{").append(opts).append("}");
+                    }
+                    String ka = Prefs.getStr(MainActivity.this, Prefs.KEY_KEEP_ALIVE).trim();
+                    if (!ka.isEmpty()) {
+                        body.append(",\"keep_alive\":\"").append(escape(ka)).append("\"");
+                    }
+                    String sys = Prefs.getStr(MainActivity.this, Prefs.KEY_SYSTEM_PROMPT).trim();
+                    if (!sys.isEmpty()) {
+                        body.append(",\"system\":\"").append(escape(sys)).append("\"");
+                    }
+                    body.append(",\"think\":")
+                            .append(Prefs.think(MainActivity.this) && !Prefs.hideThinking(MainActivity.this));
+                    if (Prefs.experimental(MainActivity.this)) {
+                        body.append(",\"experimental\":true");
+                    }
+                    body.append("}");
+                    String resp = post("/api/chat", body.toString());
                     final String reasoning = extractJsonField(resp, "reasoning_content");
                     final String content = extractJsonField(resp, "content");
                     final String error = extractJsonField(resp, "error");
+                    final String stats = Prefs.verbose(MainActivity.this) ? buildSpeedStats(resp) : "";
                     runOnUiThread(new Runnable() {
                         @Override public void run() {
                             if (pendingBubble != null) {
@@ -637,7 +655,7 @@ public class MainActivity extends Activity {
                             if (error != null && !error.isEmpty()) {
                                 appendModelBubble(null, "错误：" + error, null);
                             } else if (content != null && !content.isEmpty()) {
-                                appendModelBubble(reasoning, content, null);
+                                appendModelBubble(reasoning, content + stats, null);
                             } else {
                                 appendModelBubble(null, "(未解析到回复) " + resp, null);
                             }
@@ -672,6 +690,39 @@ public class MainActivity extends Activity {
             sb.setLength(sb.length() - 1);
         }
         return sb.toString();
+    }
+
+    /** --verbose：从 /api/chat 非流式响应解析推理速度统计。 */
+    private String buildSpeedStats(String resp) {
+        long evalCount = parseLongSafe(extractJsonField(resp, "eval_count"), 0);
+        if (evalCount <= 0) {
+            return "";
+        }
+        long evalNs = parseLongSafe(extractJsonField(resp, "eval_duration"), 0);
+        long totalNs = parseLongSafe(extractJsonField(resp, "total_duration"), 0);
+        StringBuilder s = new StringBuilder("\n\n推理速度: ");
+        if (evalNs > 0) {
+            s.append(String.format(java.util.Locale.US, "%.1f", evalCount * 1e9 / evalNs))
+                    .append(" tokens/s");
+        } else {
+            s.append("-");
+        }
+        s.append(" · 生成 ").append(evalCount).append(" tokens");
+        if (totalNs > 0) {
+            s.append(" · 总耗时 ").append(String.format(java.util.Locale.US, "%.1f", totalNs / 1e9)).append("s");
+        }
+        return s.toString();
+    }
+
+    private static long parseLongSafe(String s, long def) {
+        if (s == null) {
+            return def;
+        }
+        try {
+            return Long.parseLong(s.trim());
+        } catch (NumberFormatException e) {
+            return def;
+        }
     }
 
     // ================= 气泡 =================
@@ -727,6 +778,9 @@ public class MainActivity extends Activity {
             ss.append(error);
         }
         b.setText(ss);
+        if (Prefs.noWordWrap(this)) {
+            b.setHorizontallyScrolling(true);
+        }
 
         GradientDrawable d = new GradientDrawable();
         d.setCornerRadii(new float[]{dp(6), dp(18), dp(18), dp(18), dp(18), dp(18), dp(18), dp(18)});
