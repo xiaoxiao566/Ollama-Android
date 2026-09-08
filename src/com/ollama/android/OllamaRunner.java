@@ -262,7 +262,49 @@ public final class OllamaRunner {
                 Log.i(TAG, "注入环境变量 " + envName + "=" + v);
             }
         }
+
+        // ---- 移动端性能默认值（用户未手动设置时才注入，防止推理中途卡死） ----
+        // 1) 限制线程数：手机 8 核（含 4 个能效核）全跑满会瞬间发热降频，推理越跑越卡。
+        //    默认压到 ≤4，避免调度争抢与降频，换取长时间稳定速度。
+        if (!env.containsKey("OLLAMA_NUM_THREADS")) {
+            int def = Math.max(2, Math.min(Runtime.getRuntime().availableProcessors(), 4));
+            env.put("OLLAMA_NUM_THREADS", String.valueOf(def));
+            Log.i(TAG, "性能默认: OLLAMA_NUM_THREADS=" + def + "（限制线程数，防发热降频卡顿）");
+        }
+        // 2) KV 缓存 8bit 量化：显存/内存占用直接减半，长对话不再因为内存紧张而卡顿。
+        if (!env.containsKey("OLLAMA_KV_CACHE_TYPE")) {
+            env.put("OLLAMA_KV_CACHE_TYPE", "q8_0");
+            Log.i(TAG, "性能默认: OLLAMA_KV_CACHE_TYPE=q8_0（KV 缓存 8bit 量化，内存减半）");
+        }
+        // 3) 内存 <8GB 时默认单路并行：ollama 自动并行会同时跑多个上下文，小内存直接被撑爆。
+        if (!env.containsKey("OLLAMA_NUM_PARALLEL")) {
+            long memMB = totalMemMB();
+            if (memMB > 0 && memMB < 8 * 1024) {
+                env.put("OLLAMA_NUM_PARALLEL", "1");
+                Log.i(TAG, "性能默认: OLLAMA_NUM_PARALLEL=1（内存 " + memMB + "MB < 8GB，防多路并发撑爆内存）");
+            }
+        }
         return pb;
+    }
+
+    /** 读取 /proc/meminfo 的总内存（MB），失败返回 0。 */
+    private static long totalMemMB() {
+        try {
+            java.io.BufferedReader r = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(new java.io.FileInputStream("/proc/meminfo")));
+            try {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    if (line.startsWith("MemTotal:")) {
+                        return Long.parseLong(line.replaceAll("[^0-9]", "").trim()) / 1024;
+                    }
+                }
+            } finally {
+                r.close();
+            }
+        } catch (Exception ignored) {
+        }
+        return 0;
     }
 
     /** 返回一个命令行描述，便于日志里显示实际启动了什么。 */

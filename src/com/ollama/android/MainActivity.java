@@ -13,6 +13,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.InputType;
 import android.text.SpannableStringBuilder;
@@ -67,7 +68,12 @@ public class MainActivity extends Activity {
     private View logExpandBar;
     private EditText modelEdit;
     private EditText promptEdit;
-    private TextView pendingBubble; // “思考中…”占位气泡
+    private TextView pendingBubble; // 流式输出气泡（思考中… 占位 → 逐步填充回复）
+    private ScrollView mainScroller; // 整个内容区的滚动容器，用于流式时自动滚到底
+
+    // 日志/流式 UI 更新节流：合并高频广播，避免主线程被刷爆
+    private boolean logRefreshPending = false;
+    private volatile boolean streamUiPending = false;
 
     private static final int REQ_STORAGE = 100;
     private boolean logFileNotified = false;
@@ -195,8 +201,9 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(32)));
 
         ScrollView scroller = new ScrollView(this);
-        scroller.setFillViewport(true);
-        scroller.setOverScrollMode(View.OVER_SCROLL_NEVER);
+            mainScroller = scroller;
+            scroller.setFillViewport(true);
+            scroller.setOverScrollMode(View.OVER_SCROLL_NEVER);
 
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
@@ -743,18 +750,20 @@ public class MainActivity extends Activity {
         }
         // 用户气泡（右侧）
         appendUserBubble(prompt);
-        // 模型占位气泡
+        // 模型气泡：流式回复直接写进这个气泡
         pendingBubble = appendPlaceholder("（思考中…）");
+        promptEdit.setText("");
 
         new Thread(new Runnable() {
             @Override public void run() {
+                HttpURLConnection conn = null;
                 try {
                     String opts = buildOptionsJson();
                     StringBuilder body = new StringBuilder();
                     body.append("{\"model\":\"").append(escape(model)).append("\"");
                     body.append(",\"messages\":[{\"role\":\"user\",\"content\":\"")
                             .append(escape(prompt)).append("\"}]");
-                    body.append(",\"stream\":false");
+                    body.append(",\"stream\":true");
                     if (!opts.isEmpty()) {
                         body.append(",\"options\":{").append(opts).append("}");
                     }
@@ -772,40 +781,154 @@ public class MainActivity extends Activity {
                         body.append(",\"experimental\":true");
                     }
                     body.append("}");
-                    String resp = post("/api/chat", body.toString());
-                    final String reasoning = extractJsonField(resp, "reasoning_content");
-                    final String content = extractJsonField(resp, "content");
-                    final String error = extractJsonField(resp, "error");
-                    final String stats = Prefs.verbose(MainActivity.this) ? buildSpeedStats(resp) : "";
-                    runOnUiThread(new Runnable() {
-                        @Override public void run() {
-                            if (pendingBubble != null) {
-                                chatContainer.removeView(pendingBubble);
-                                pendingBubble = null;
-                            }
-                            if (error != null && !error.isEmpty()) {
-                                appendModelBubble(null, "错误：" + error, null);
-                            } else if (content != null && !content.isEmpty()) {
-                                appendModelBubble(reasoning, content + stats, null);
-                            } else {
-                                appendModelBubble(null, "(未解析到回复) " + resp, null);
-                            }
+
+                    URL url = new URL("http://" + Prefs.bindAddress(MainActivity.this) + "/api/chat");
+                    conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setConnectTimeout(15000);
+                    conn.setReadTimeout(600000); // 单次最长等 10 分钟，卡死也能自动报错
+                    conn.setRequestProperty("Content-Type", "application/json");
+                    conn.setDoOutput(true);
+                    OutputStream os = conn.getOutputStream();
+                    os.write(body.toString().getBytes("UTF-8"));
+                    os.flush();
+                    os.close();
+
+                    int code = conn.getResponseCode();
+                    InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
+                    if (is == null) {
+                        is = conn.getInputStream();
+                    }
+
+                    StringBuilder reason = new StringBuilder();
+                    StringBuilder content = new StringBuilder();
+                    String error = null;
+                    long evalCount = 0, evalNs = 0, totalNs = 0;
+                    boolean done = false;
+                    long lastUi = 0;
+                    BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        line = line.trim();
+                        if (line.isEmpty() || !line.startsWith("{")) {
+                            continue;
                         }
-                    });
-                } catch (Exception e) {
-                    final String msg = "对话失败：" + e.getMessage();
-                    runOnUiThread(new Runnable() {
+                        String rc = extractJsonField(line, "reasoning_content");
+                        String c = extractJsonField(line, "content");
+                        String e = extractJsonField(line, "error");
+                        if (rc != null && !rc.isEmpty()) {
+                            reason.append(rc);
+                        }
+                        if (c != null && !c.isEmpty()) {
+                            content.append(c);
+                        }
+                        if (e != null && !e.isEmpty()) {
+                            error = e;
+                        }
+                        if (line.contains("\"done\":true")) {
+                            done = true;
+                            evalCount = parseLongSafe(extractJsonNumber(line, "eval_count"), 0);
+                            evalNs = parseLongSafe(extractJsonNumber(line, "eval_duration"), 0);
+                            totalNs = parseLongSafe(extractJsonNumber(line, "total_duration"), 0);
+                        }
+                        // 节流：最多每 80ms 刷一次 UI
+                        long now = SystemClock.uptimeMillis();
+                        if (now - lastUi >= 80) {
+                            lastUi = now;
+                            pushStream(reason.toString(), content.toString(), error, done,
+                                    evalCount, evalNs, totalNs, false);
+                        }
+                    }
+                    br.close();
+                    pushStream(reason.toString(), content.toString(), error, done,
+                            evalCount, evalNs, totalNs, true);
+                    if (error == null && !done) {
+                        pushStream(reason.toString(), content.toString(),
+                                "流式响应未正常结束，请查看日志", true, 0, 0, 0, true);
+                    }
+                } catch (final Exception ex) {
+                    pushStream("", "", "对话失败：" + ex.getMessage(), true, 0, 0, 0, true);
+                } finally {
+                    if (conn != null) {
+                        conn.disconnect();
+                    }
+                }
+            }
+        }).start();
+    }
+
+    /**
+     * 流式更新占位气泡。force=true 时强制入队（用于结束/错误，保证最后状态一定显示）。
+     * 普通更新合并高频调用（最新快照覆盖，UI 只刷最后一帧）。
+     */
+    private void pushStream(final String reasoning, final String content, final String error,
+                            final boolean done, final long evalCount, final long evalNs,
+                            final long totalNs, final boolean force) {
+        if (streamUiPending && !force) {
+            return;
+        }
+        streamUiPending = true;
+        runOnUiThread(new Runnable() {
+            @Override public void run() {
+                streamUiPending = false;
+                TextView b = pendingBubble;
+                if (b == null) {
+                    return;
+                }
+                SpannableStringBuilder ss = new SpannableStringBuilder();
+                if (reasoning.length() > 0) {
+                    ss.append("思考过程\n");
+                    ss.setSpan(new StyleSpan(Typeface.BOLD), 0, ss.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    ss.setSpan(new android.text.style.ForegroundColorSpan(0xFF9A3412),
+                            0, ss.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    int start = ss.length();
+                    ss.append(reasoning).append("\n\n");
+                    ss.setSpan(new StyleSpan(Typeface.BOLD), start, ss.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    ss.setSpan(new android.text.style.ForegroundColorSpan(0xFF7C2D12),
+                            start, ss.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                }
+                if (content.length() > 0) {
+                    ss.append(content);
+                } else if (reasoning.length() == 0) {
+                    ss.append("（思考中…）");
+                }
+                if (error != null && !error.isEmpty()) {
+                    if (ss.length() > 0) {
+                        ss.append('\n');
+                    }
+                    int es = ss.length();
+                    ss.append(error);
+                    ss.setSpan(new android.text.style.ForegroundColorSpan(C_RED),
+                            es, ss.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                } else if (done && Prefs.verbose(MainActivity.this) && evalCount > 0) {
+                    StringBuilder s = new StringBuilder("\n\n推理速度: ");
+                    if (evalNs > 0) {
+                        s.append(String.format(java.util.Locale.US, "%.1f", evalCount * 1e9 / evalNs))
+                                .append(" tokens/s");
+                    } else {
+                        s.append("-");
+                    }
+                    s.append(" · 生成 ").append(evalCount).append(" tokens");
+                    if (totalNs > 0) {
+                        s.append(" · 总耗时 ")
+                                .append(String.format(java.util.Locale.US, "%.1f", totalNs / 1e9))
+                                .append("s");
+                    }
+                    ss.append(s);
+                }
+                b.setText(ss);
+                if (Prefs.noWordWrap(MainActivity.this)) {
+                    b.setHorizontallyScrolling(true);
+                }
+                if (mainScroller != null) {
+                    mainScroller.post(new Runnable() {
                         @Override public void run() {
-                            if (pendingBubble != null) {
-                                chatContainer.removeView(pendingBubble);
-                                pendingBubble = null;
-                            }
-                            appendModelBubble(null, msg, null);
+                            mainScroller.fullScroll(View.FOCUS_DOWN);
                         }
                     });
                 }
             }
-        }).start();
+        });
     }
 
     private String buildOptionsJson() {
@@ -954,10 +1077,25 @@ public class MainActivity extends Activity {
     // ================= 日志 / 状态刷新 =================
 
     private void refreshLog() {
-        final String log = OllamaService.getLog();
+        // 合并高频广播：服务输出密集时每 150ms 最多刷新一次 UI，避免主线程被拖卡
+        if (logRefreshPending) {
+            return;
+        }
+        logRefreshPending = true;
         runOnUiThread(new Runnable() {
             @Override public void run() {
-                logView.setText(log.length() > 0 ? log : "（暂无日志）");
+                logRefreshPending = false;
+                String log = OllamaService.getLog();
+                // 界面只展示最近 40KB，完整日志落在 ollama-log 目录文件里
+                final int CAP = 40000;
+                String disp;
+                if (log.length() > CAP) {
+                    disp = "…（已省略较早日志，完整日志见 ollama-log 目录文件）\n"
+                            + log.substring(log.length() - CAP);
+                } else {
+                    disp = log;
+                }
+                logView.setText(disp.length() > 0 ? disp : "（暂无日志）");
                 // 有新日志时自动滚动到底部，而不是停在原来的位置
                 if (logBody != null) {
                     final android.widget.ScrollView sv = (android.widget.ScrollView) logBody;
@@ -1114,5 +1252,22 @@ public class MainActivity extends Activity {
             i++;
         }
         return out.toString();
+    }
+
+    /** 提取 JSON 数字字段（如 eval_count / eval_duration），非字符串用。 */
+    private static String extractJsonNumber(String json, String field) {
+        if (json == null) return null;
+        String key = "\"" + field + "\"";
+        int idx = json.indexOf(key);
+        if (idx < 0) return null;
+        int colon = json.indexOf(':', idx + key.length());
+        if (colon < 0) return null;
+        int i = colon + 1;
+        while (i < json.length() && (json.charAt(i) == ' ' || json.charAt(i) == '\t')) i++;
+        int start = i;
+        while (i < json.length() && (Character.isDigit(json.charAt(i))
+                || json.charAt(i) == '-' || json.charAt(i) == '.')) i++;
+        if (i == start) return null;
+        return json.substring(start, i);
     }
 }

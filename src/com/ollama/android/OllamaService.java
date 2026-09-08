@@ -133,7 +133,12 @@ public class OllamaService extends Service {
         appendLog("== 运行配置 ==");
         appendLog("GPU 后端: " + gpuDesc);
         appendLog("监听地址: " + Prefs.bindAddress(this));
-        appendLog("线程数: " + (Prefs.numThread(this) > 0 ? Prefs.numThread(this) : "自动（大核）"));
+        String thr = Prefs.getStr(this, "OLLAMA_NUM_THREADS").trim();
+        appendLog("线程数: " + (thr.isEmpty() ? "自动（限制 ≤4，防发热降频卡顿）" : thr));
+        String kv = Prefs.getStr(this, "OLLAMA_KV_CACHE_TYPE").trim();
+        appendLog("KV 缓存: " + (kv.isEmpty() ? "q8_0（8bit 量化，内存减半）" : kv));
+        String par = Prefs.getStr(this, "OLLAMA_NUM_PARALLEL").trim();
+        appendLog("并行度: " + (par.isEmpty() ? "1（内存不足 8GB 时自动限制）" : par));
         appendLog("上下文长度: " + Prefs.numCtx(this));
         appendLog("GPU 层数: " + (Prefs.numGpu(this) < 0 ? "自动" : Prefs.numGpu(this)));
     }
