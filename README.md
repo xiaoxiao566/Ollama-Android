@@ -1,9 +1,5 @@
 # Ollama-Android
 
-<p align="center">
-  <img src="assets/cover.png" alt="Ollama Android 封面" width="720"/>
-</p>
-
 Android 端本地大模型服务：内置 ollama 引擎（免 ROOT 解压运行），默认 CPU 后端、可选 Vulkan GPU 加速，液态玻璃 UI，内置聊天界面与全部数字参数调节。
 
 > 适用于 arm64-v8a 设备，建议 Android 12+（Vulkan 加速需要系统 Vulkan 驱动，Android 13+ 体验最佳）。
