@@ -91,6 +91,7 @@ public class OllamaService extends Service {
     // ---------------- 核心：启动服务 ----------------
 
     private void startServer() {
+        appendLog("──────────────── 本次启动 ────────────────");
         logStartupConfig();
         appendLog("== 启动 ollama serve ==");
         appendLog(runner.describeCommand());
@@ -167,6 +168,9 @@ public class OllamaService extends Service {
                         || low.contains("ggml_vk") || low.contains("vulkan device"))) {
                     vulkanDetected = true;
                     appendLog("[GPU] 已启用 Vulkan 加速（" + line.trim() + "）");
+                    if (!Prefs.GPU_VULKAN.equals(Prefs.gpuBackend(this))) {
+                        appendLog("[GPU] 警告：设置未选择 Vulkan，但引擎仍加载了 Vulkan（环境变量残留？）");
+                    }
                 }
                 if (!cpuFallbackWarned && Prefs.GPU_VULKAN.equals(Prefs.gpuBackend(this))
                         && (low.contains("no suitable") || low.contains("no compatible"))) {

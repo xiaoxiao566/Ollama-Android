@@ -196,13 +196,34 @@ public class SettingsActivity extends Activity {
         rg.setOrientation(LinearLayout.VERTICAL);
 
         rCpu = radio("CPU  ——  最稳定，所有机型通用");
+        rCpu.setId(0x6001);
         rVulkan = radio("Vulkan  ——  推荐，走系统 GPU 驱动加速");
+        rVulkan.setId(0x6002);
         rOpencl = radio("OpenCL  ——  实验性（多数手机无驱动，会回退 CPU）");
+        rOpencl.setId(0x6003);
+
+        // 选中即生效：不依赖底部的「保存设置」按钮，切换后重启服务即可
+        rg.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(RadioGroup group, int checkedId) {
+                String v = Prefs.GPU_CPU;
+                if (checkedId == 0x6002) v = Prefs.GPU_VULKAN;
+                else if (checkedId == 0x6003) v = Prefs.GPU_OPENCL;
+                Prefs.setGpuBackend(SettingsActivity.this, v);
+            }
+        });
 
         rg.addView(rCpu);
         rg.addView(rVulkan);
         rg.addView(rOpencl);
         card.addView(rg);
+
+        TextView hint = new TextView(this);
+        hint.setText("切换即时保存，重启服务后生效");
+        hint.setTextSize(12);
+        hint.setTextColor(C_TEXT_SUB);
+        hint.setPadding(0, dp(6), 0, 0);
+        card.addView(hint);
         return card;
     }
 
