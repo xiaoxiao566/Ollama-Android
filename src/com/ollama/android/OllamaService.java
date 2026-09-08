@@ -153,11 +153,26 @@ public class OllamaService extends Service {
     /** 持续读取子进程 stdout（含合并后的 stderr），逐行写入日志。 */
     private void drainOutput(Process p) {
         BufferedReader reader = null;
+        boolean vulkanDetected = false;
+        boolean cpuFallbackWarned = false;
         try {
             reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
             String line;
             while ((line = reader.readLine()) != null) {
                 appendLog(line);
+                String low = line.toLowerCase(java.util.Locale.US);
+                // 显式告诉用户 Vulkan 是否真的生效（默认已启用 Vulkan）
+                if (!vulkanDetected
+                        && (low.contains("vulkan0") || low.contains("ggml_vulkan")
+                        || low.contains("ggml_vk") || low.contains("vulkan device"))) {
+                    vulkanDetected = true;
+                    appendLog("[GPU] 已启用 Vulkan 加速（" + line.trim() + "）");
+                }
+                if (!cpuFallbackWarned && Prefs.GPU_VULKAN.equals(Prefs.gpuBackend(this))
+                        && (low.contains("no suitable") || low.contains("no compatible"))) {
+                    cpuFallbackWarned = true;
+                    appendLog("[GPU] 未发现可用 Vulkan 设备，已回退 CPU 推理（速度会明显变慢）");
+                }
                 if (line.contains("msg=\"server listening\"") || line.contains("Listening on")) {
                     setState(STATE_RUNNING);
                 }

@@ -45,8 +45,6 @@ import java.net.URL;
 public class MainActivity extends Activity {
 
     // ---- 配色（液态玻璃 + 酷安风格绿；背景压深一档让白色高光有对比） ----
-    private static final int C_BG_TOP = 0xFFEAF0F8;
-    private static final int C_BG_BOTTOM = 0xFFD7E1EF;
     private static final int C_TEXT = 0xFF1F2937;
     private static final int C_TEXT_SUB = 0xFF6B7280;
     private static final int C_GREEN_A = 0xFF3ED67E;
@@ -55,7 +53,6 @@ public class MainActivity extends Activity {
     private static final int C_AMBER = 0xFFF59E0B;
     private static final int C_GLASS = 0xE8FFFFFF;   // 玻璃卡底色（半透明白）
     private static final int C_GLASS_STROKE = 0x88FFFFFF; // 高光描边
-    private static final int C_LOG_BG = 0xE6121212;  // 日志面板：深色半透明玻璃
 
     private TextView statusView;
     private TextView statusDot;
@@ -126,14 +123,27 @@ public class MainActivity extends Activity {
     private View buildUi() {
         FrameLayout root = new FrameLayout(this);
         root.setBackground(new GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{C_BG_TOP, C_BG_BOTTOM}));
+                GradientDrawable.Orientation.TL_BR,
+                new int[]{0xFFF2F6FC, 0xFFDDE7F3}));
 
-        // 背景氛围色块（让玻璃透出色彩，仿酷安质感）
-        root.addView(orb(new int[]{0x38C6F0D0, 0x00C6F0D0}, dp(110)),
-                new FrameLayout.LayoutParams(dp(220), dp(220)));
-        root.addView(orb(new int[]{0x3094B9FF, 0x0094B9FF}, dp(90)),
-                new FrameLayout.LayoutParams(dp(180), dp(180)));
+        // 背景氛围色块：分散在四角的柔光，让玻璃透出颜色（人工摆放，错落有致）
+        FrameLayout.LayoutParams lp1 = new FrameLayout.LayoutParams(dp(260), dp(260));
+        lp1.gravity = Gravity.TOP | Gravity.END;
+        lp1.topMargin = -dp(90);
+        lp1.rightMargin = -dp(70);
+        root.addView(orb(new int[]{0x40B9E8C8, 0x00B9E8C8}, dp(130)), lp1);
+
+        FrameLayout.LayoutParams lp2 = new FrameLayout.LayoutParams(dp(200), dp(200));
+        lp2.gravity = Gravity.BOTTOM | Gravity.START;
+        lp2.bottomMargin = -dp(70);
+        lp2.leftMargin = -dp(60);
+        root.addView(orb(new int[]{0x3394B9FF, 0x0094B9FF}, dp(100)), lp2);
+
+        FrameLayout.LayoutParams lp3 = new FrameLayout.LayoutParams(dp(120), dp(120));
+        lp3.gravity = Gravity.TOP | Gravity.START;
+        lp3.topMargin = dp(230);
+        lp3.leftMargin = -dp(40);
+        root.addView(orb(new int[]{0x22F0C98E, 0x00F0C98E}, dp(60)), lp3);
 
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
@@ -146,7 +156,7 @@ public class MainActivity extends Activity {
         col.addView(logPanel, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(150)));
         col.addView(logExpandBar, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(30)));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(32)));
 
         ScrollView scroller = new ScrollView(this);
         scroller.setFillViewport(true);
@@ -154,7 +164,7 @@ public class MainActivity extends Activity {
 
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding(dp(14), dp(6), dp(14), dp(16));
+        body.setPadding(dp(16), dp(4), dp(16), dp(20));
 
         body.addView(buildStatusCard());
         body.addView(buildControlCard());
@@ -175,38 +185,55 @@ public class MainActivity extends Activity {
         return root;
     }
 
-    /** 液态玻璃标题栏。 */
+    /** 液态玻璃标题栏：应用标识 + 标题 + 设置入口。 */
     private View buildHeader() {
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(18), dp(14), dp(14), dp(12));
+        header.setPadding(dp(18), dp(16), dp(16), dp(10));
+
+        // 应用标识：绿色渐变圆角方块 + 字母
+        TextView mark = new TextView(this);
+        mark.setText("O");
+        mark.setTextSize(20);
+        mark.setTypeface(null, Typeface.BOLD);
+        mark.setTextColor(Color.WHITE);
+        mark.setGravity(Gravity.CENTER);
+        GradientDrawable markBg = new GradientDrawable();
+        markBg.setOrientation(GradientDrawable.Orientation.TL_BR);
+        markBg.setColors(new int[]{C_GREEN_A, C_GREEN_B});
+        markBg.setCornerRadius(dp(13));
+        markBg.setStroke(hairline(), 0x66FFFFFF);
+        mark.setBackground(markBg);
+        header.addView(mark, new LinearLayout.LayoutParams(dp(42), dp(42)));
+
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        titles.setPadding(dp(12), 0, 0, 0);
 
         TextView title = new TextView(this);
         title.setText("Ollama");
-        title.setTextSize(21);
+        title.setTextSize(20);
         title.setTypeface(null, Typeface.BOLD);
         title.setTextColor(C_TEXT);
-        header.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
+        titles.addView(title);
+
+        TextView sub = new TextView(this);
+        sub.setText("本地大模型 · 一触即用");
+        sub.setTextSize(12);
+        sub.setTextColor(C_TEXT_SUB);
+        titles.addView(sub);
+
+        header.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
 
         TextView settings = new TextView(this);
         settings.setText("\u2699 设置");
-        settings.setTextSize(14);
+        settings.setTextSize(13);
         settings.setTypeface(null, Typeface.BOLD);
         settings.setTextColor(C_TEXT);
         settings.setGravity(Gravity.CENTER);
-        settings.setPadding(dp(14), dp(7), dp(14), dp(7));
-
-        GradientDrawable sBody = glassRound(dp(22), 0xC8FFFFFF, 0xF0FFFFFF);
-        // 左上受光（玻璃光泽）
-        GradientDrawable sLight = new GradientDrawable();
-        sLight.setCornerRadius(dp(22));
-        sLight.setOrientation(GradientDrawable.Orientation.TL_BR);
-        sLight.setColors(new int[]{0x4DFFFFFF, 0x00FFFFFF});
-        android.graphics.drawable.LayerDrawable sLd =
-                new android.graphics.drawable.LayerDrawable(
-                        new android.graphics.drawable.Drawable[]{sBody, sLight});
-        settings.setBackground(sLd);
+        settings.setPadding(dp(14), dp(8), dp(14), dp(8));
+        settings.setBackground(frostPill());
 
         settings.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
@@ -217,42 +244,62 @@ public class MainActivity extends Activity {
         return header;
     }
 
+    /** 状态条：左侧状态胶囊 + 右侧地址小字。 */
     private View buildStatusCard() {
         LinearLayout card = glassCard();
-        card.setPadding(dp(16), dp(13), dp(16), dp(13));
+        card.setPadding(dp(16), dp(12), dp(16), dp(12));
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
 
+        // 状态胶囊：圆点 + 文字，带浅色底
         statusDot = new TextView(this);
         statusDot.setText("\u25CF");
-        statusDot.setTextSize(18);
+        statusDot.setTextSize(14);
         statusDot.setTextColor(Color.GRAY);
 
         statusView = new TextView(this);
         statusView.setText("服务未启动");
-        statusView.setTextSize(15);
+        statusView.setTextSize(14);
         statusView.setTypeface(null, Typeface.BOLD);
         statusView.setTextColor(C_TEXT);
-        statusView.setPadding(dp(10), 0, 0, 0);
+        statusView.setPadding(dp(8), 0, 0, 0);
 
-        card.addView(statusDot);
-        card.addView(statusView, new LinearLayout.LayoutParams(0, -2, 1f));
+        LinearLayout pill = new LinearLayout(this);
+        pill.setOrientation(LinearLayout.HORIZONTAL);
+        pill.setGravity(Gravity.CENTER_VERTICAL);
+        pill.setPadding(dp(10), dp(6), dp(12), dp(6));
+        pill.setBackground(pillSoft());
+        pill.addView(statusDot);
+        pill.addView(statusView);
+
+        card.addView(pill, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        // 右侧小提示：当前监听地址
+        TextView tip = new TextView(this);
+        tip.setText(Prefs.bindAddress(this));
+        tip.setTextSize(12);
+        tip.setTextColor(C_TEXT_SUB);
+        tip.setPadding(dp(8), 0, 0, 0);
+        card.addView(tip);
         return card;
     }
 
-    /** 液态玻璃启动/停止按钮。 */
+    /** 液态玻璃启动/停止按钮：并排布局，主次分明。 */
     private View buildControlCard() {
         LinearLayout card = glassCard();
         card.setPadding(dp(12), dp(12), dp(12), dp(12));
         card.setOrientation(LinearLayout.VERTICAL);
 
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+
         startBtn = new Button(this);
-        startBtn.setText("启 动 服 务");
+        startBtn.setText("启动服务");
         styleGlassButton(startBtn, new int[]{C_GREEN_A, C_GREEN_B}, Color.WHITE);
         startBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { startOllama(); }
         });
-        card.addView(startBtn, matchWidth(-2));
+        row.addView(startBtn, new LinearLayout.LayoutParams(0, -2, 1f));
 
         stopBtn = new Button(this);
         stopBtn.setText("停止服务");
@@ -260,9 +307,11 @@ public class MainActivity extends Activity {
         stopBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { stopOllama(); }
         });
-        LinearLayout.LayoutParams sp = matchWidth(-2);
-        sp.topMargin = dp(6);
-        card.addView(stopBtn, sp);
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(0, -2, 1f);
+        sp.leftMargin = dp(10);
+        row.addView(stopBtn, sp);
+
+        card.addView(row, matchWidth(-2));
         return card;
     }
 
@@ -273,23 +322,38 @@ public class MainActivity extends Activity {
 
         card.addView(sectionLabel("模型管理"));
 
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+
         modelEdit = new EditText(this);
-        modelEdit.setHint("模型名，如 qwen2.5:1.5b");
+        modelEdit.setHint("如 qwen2.5:1.5b");
         modelEdit.setSingleLine(true);
         modelEdit.setTextSize(15);
         modelEdit.setTextColor(C_TEXT);
         modelEdit.setHintTextColor(C_TEXT_SUB);
-        modelEdit.setPadding(dp(12), dp(10), dp(12), dp(10));
+        modelEdit.setPadding(dp(14), dp(11), dp(14), dp(11));
         modelEdit.setBackground(glassRound(dp(16), 0xAAFFFFFF, 0x66FFFFFF));
-        card.addView(modelEdit, matchWidth(-2));
+        row.addView(modelEdit, new LinearLayout.LayoutParams(0, -2, 1f));
 
         Button pullBtn = new Button(this);
-        pullBtn.setText("拉取模型（需联网，较大较慢）");
+        pullBtn.setText("拉取");
         styleGlassButton(pullBtn, null, C_TEXT);
         pullBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { pullModel(); }
         });
-        card.addView(pullBtn, matchWidth(-2));
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(dp(84), -2);
+        plp.leftMargin = dp(10);
+        row.addView(pullBtn, plp);
+
+        card.addView(row, matchWidth(-2));
+
+        TextView hint = new TextView(this);
+        hint.setText("拉取需联网，进度会实时显示在上方日志里");
+        hint.setTextSize(12);
+        hint.setTextColor(C_TEXT_SUB);
+        hint.setPadding(dp(2), 0, 0, dp(2));
+        card.addView(hint);
         return card;
     }
 
@@ -309,17 +373,23 @@ public class MainActivity extends Activity {
         promptEdit.setHintTextColor(C_TEXT_SUB);
         promptEdit.setMinLines(2);
         promptEdit.setMaxLines(4);
-        promptEdit.setPadding(dp(12), dp(10), dp(12), dp(10));
+        promptEdit.setPadding(dp(14), dp(11), dp(14), dp(11));
         promptEdit.setBackground(glassRound(dp(16), 0xAAFFFFFF, 0x66FFFFFF));
         card.addView(promptEdit, matchWidth(-2));
 
+        // 发送按钮：右侧小胶囊，像聊天工具那样
+        LinearLayout sendRow = new LinearLayout(this);
+        sendRow.setOrientation(LinearLayout.HORIZONTAL);
+        sendRow.setGravity(Gravity.END);
+
         Button sendBtn = new Button(this);
-        sendBtn.setText("发 送");
+        sendBtn.setText("发送");
         styleGlassButton(sendBtn, new int[]{C_GREEN_A, C_GREEN_B}, Color.WHITE);
         sendBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { sendChat(); }
         });
-        card.addView(sendBtn, matchWidth(-2));
+        sendRow.addView(sendBtn, new LinearLayout.LayoutParams(dp(104), -2));
+        card.addView(sendRow, matchWidth(-2));
 
         chatContainer = new LinearLayout(this);
         chatContainer.setOrientation(LinearLayout.VERTICAL);
@@ -334,20 +404,25 @@ public class MainActivity extends Activity {
         return card;
     }
 
-    /** 日志面板（现在位于页面顶部标题栏之下）。 */
+    /** 日志面板（现在位于页面顶部标题栏之下）：圆角深色玻璃卡。 */
     private View buildLogPanel() {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setBackground(round(C_LOG_BG, 0));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(16));
+        bg.setColor(0xF0121212);
+        bg.setStroke(hairline(), 0x3DFFFFFF);
+        panel.setBackground(bg);
+        panel.setPadding(dp(2), dp(2), dp(2), dp(2));
 
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(dp(14), dp(5), dp(6), dp(5));
+        bar.setPadding(dp(14), dp(7), dp(8), dp(5));
 
         TextView label = new TextView(this);
         label.setText("运行日志");
-        label.setTextSize(13);
+        label.setTextSize(12);
         label.setTypeface(null, Typeface.BOLD);
         label.setTextColor(Color.WHITE);
         bar.addView(label, new LinearLayout.LayoutParams(0, -2, 1f));
@@ -377,7 +452,7 @@ public class MainActivity extends Activity {
         logView.setTypeface(Typeface.MONOSPACE);
         logView.setTextColor(0xFFD4D4D4);
         logView.setTextIsSelectable(true);
-        logView.setPadding(dp(12), dp(6), dp(12), dp(8));
+        logView.setPadding(dp(12), dp(4), dp(12), dp(8));
         logScroll.addView(logView, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         logBody = logScroll;
@@ -391,14 +466,18 @@ public class MainActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER);
-        bar.setBackground(round(C_LOG_BG, 0));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(16));
+        bg.setColor(0xF0121212);
+        bg.setStroke(hairline(), 0x3DFFFFFF);
+        bar.setBackground(bg);
 
         TextView t = new TextView(this);
         t.setText("\u25B2 展开日志");
         t.setTextSize(12);
         t.setTypeface(null, Typeface.BOLD);
         t.setTextColor(Color.WHITE);
-        t.setPadding(0, dp(6), 0, dp(6));
+        t.setPadding(0, dp(8), 0, dp(8));
         bar.addView(t);
 
         bar.setOnClickListener(new View.OnClickListener() {
@@ -422,7 +501,7 @@ public class MainActivity extends Activity {
     private LinearLayout glassCard() {
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
-        c.setBackground(glassRound(dp(18), C_GLASS, C_GLASS_STROKE));
+        c.setBackground(glassRound(dp(20), C_GLASS, C_GLASS_STROKE));
         if (Build.VERSION.SDK_INT >= 28) {
             c.setElevation(dp(4));
             c.setOutlineAmbientShadowColor(0x1F000000);
@@ -435,6 +514,24 @@ public class MainActivity extends Activity {
         lp.setMargins(0, dp(8), 0, dp(8));
         c.setLayoutParams(lp);
         return c;
+    }
+
+    /** 磨砂药丸：半透明白底 + 高光描边（设置入口、次级按钮通用）。 */
+    private GradientDrawable frostPill() {
+        GradientDrawable d = new GradientDrawable();
+        d.setCornerRadius(dp(20));
+        d.setColor(0xD9FFFFFF);
+        d.setStroke(hairline(), 0xAAFFFFFF);
+        return d;
+    }
+
+    /** 浅色胶囊底：状态胶囊用的柔和底色。 */
+    private GradientDrawable pillSoft() {
+        GradientDrawable d = new GradientDrawable();
+        d.setCornerRadius(dp(18));
+        d.setColor(0x26FFFFFF);
+        d.setStroke(hairline(), 0x66FFFFFF);
+        return d;
     }
 
     /** 液态玻璃圆角背景：半透明白 + 顶部高光描边。colors 为 null 时用半透明白。 */
@@ -484,14 +581,28 @@ public class MainActivity extends Activity {
         }
     }
 
-    private TextView sectionLabel(String text) {
+    private View sectionLabel(String text) {
+        LinearLayout wrap = new LinearLayout(this);
+        wrap.setOrientation(LinearLayout.HORIZONTAL);
+        wrap.setGravity(Gravity.CENTER_VERTICAL);
+        wrap.setPadding(0, 0, 0, dp(8));
+
+        // 绿色小圆点：人工感的分区标记
+        View dot = new View(this);
+        GradientDrawable d = new GradientDrawable();
+        d.setShape(GradientDrawable.OVAL);
+        d.setColors(new int[]{C_GREEN_A, C_GREEN_B});
+        dot.setBackground(d);
+        wrap.addView(dot, new LinearLayout.LayoutParams(dp(6), dp(6)));
+
         TextView t = new TextView(this);
         t.setText(text);
         t.setTextSize(13);
         t.setTypeface(null, Typeface.BOLD);
-        t.setTextColor(C_TEXT_SUB);
-        t.setPadding(0, 0, 0, dp(8));
-        return t;
+        t.setTextColor(C_TEXT);
+        t.setPadding(dp(6), 0, 0, 0);
+        wrap.addView(t);
+        return wrap;
     }
 
     private void styleLogBtn(Button b) {
@@ -517,13 +628,6 @@ public class MainActivity extends Activity {
         b.setMinWidth(0);
         b.setMinimumWidth(0);
         b.setPadding(dp(10), dp(4), dp(10), dp(4));
-    }
-
-    private GradientDrawable round(int color, int radius) {
-        GradientDrawable d = new GradientDrawable();
-        d.setColor(color);
-        d.setCornerRadius(radius);
-        return d;
     }
 
     private LinearLayout.LayoutParams matchWidth(int height) {
@@ -827,6 +931,15 @@ public class MainActivity extends Activity {
         runOnUiThread(new Runnable() {
             @Override public void run() {
                 logView.setText(log.length() > 0 ? log : "（暂无日志）");
+                // 有新日志时自动滚动到底部，而不是停在原来的位置
+                if (logBody != null) {
+                    final android.widget.ScrollView sv = (android.widget.ScrollView) logBody;
+                    sv.post(new Runnable() {
+                        @Override public void run() {
+                            sv.fullScroll(View.FOCUS_DOWN);
+                        }
+                    });
+                }
             }
         });
     }
@@ -836,9 +949,9 @@ public class MainActivity extends Activity {
             @Override public void run() {
                 if (OllamaService.STATE_RUNNING.equals(state)) {
                     statusDot.setTextColor(C_GREEN_A);
-                    statusView.setText("服务运行中 · " + Prefs.bindAddress(MainActivity.this));
+                    statusView.setText("服务运行中");
                     statusView.setTextColor(C_TEXT);
-                    startBtn.setText("重 启 服 务");
+                    startBtn.setText("重启服务");
                 } else if (OllamaService.STATE_STARTING.equals(state)) {
                     statusDot.setTextColor(C_AMBER);
                     statusView.setText("正在启动…");
@@ -851,7 +964,7 @@ public class MainActivity extends Activity {
                     statusDot.setTextColor(Color.GRAY);
                     statusView.setText("服务未启动");
                     statusView.setTextColor(C_TEXT);
-                    startBtn.setText("启 动 服 务");
+                    startBtn.setText("启动服务");
                 }
             }
         });

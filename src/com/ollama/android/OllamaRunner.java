@@ -96,7 +96,47 @@ public final class OllamaRunner {
         extractTree("lib/ollama", libOllama);
 
         ensureExecutable();
+        ensureVulkanBridge();
         Log.i(TAG, "资源就绪" + (hasVulkanBackend() ? "（含 Vulkan 后端）" : "（仅 CPU 后端）"));
+    }
+
+    /**
+     * libvulkan 兼容桥：Android 系统只提供 /system/lib64/libvulkan.so，
+     * 个别组件按 libvulkan.so.1 名字 dlopen。这里把系统 Vulkan 加载器复制一份
+     * 到引擎目录并命名为 libvulkan.so.1，两种名字都能命中同一个系统加载器
+     * （该加载器运行在 root namespace，能访问 /vendor/lib64/hw/ 下的真实 GPU 驱动）。
+     */
+    private void ensureVulkanBridge() {
+        File bridge = new File(libOllama, "libvulkan.so.1");
+        if (bridge.exists() && bridge.length() > 0) {
+            return;
+        }
+        String[] candidates = {
+                "/system/lib64/libvulkan.so",
+                "/vendor/lib64/libvulkan.so",
+                "/system/lib/libvulkan.so"
+        };
+        for (String c : candidates) {
+            File src = new File(c);
+            if (src.exists()) {
+                try {
+                    java.io.FileInputStream in = new java.io.FileInputStream(src);
+                    java.io.FileOutputStream out = new java.io.FileOutputStream(bridge);
+                    byte[] buf = new byte[1 << 16];
+                    int n;
+                    while ((n = in.read(buf)) > 0) {
+                        out.write(buf, 0, n);
+                    }
+                    in.close();
+                    out.close();
+                    Log.i(TAG, "已创建 libvulkan.so.1 桥 -> " + c);
+                } catch (IOException e) {
+                    Log.w(TAG, "创建 libvulkan.so.1 桥失败: " + e.getMessage());
+                }
+                return;
+            }
+        }
+        Log.w(TAG, "未找到系统 libvulkan.so，Vulkan 加速可能不可用");
     }
 
     private void ensureExecutable() {
