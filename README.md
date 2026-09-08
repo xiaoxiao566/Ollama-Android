@@ -7,7 +7,7 @@ Android 端本地大模型服务：内置 ollama 引擎（免 ROOT 解压运行�
 ## 功能
 
 - **免 ROOT 内置引擎**：首次启动自动解压 ollama / llama.cpp 引擎到应用私有目录，通过系统 linker 在 SELinux 限制下运行
-- **Vulkan GPU 加速（默认开启）**：内置 `libggml-vulkan.so`，通过系统 Vulkan 加载器访问 `/vendor/lib64/hw/` 下的真实 GPU 驱动；无 Vulkan 驱动的设备会自动回退 CPU，并在运行日志中用 `[GPU]` 标注实际生效的后端
+- **Vulkan GPU 加速（可选）**：内置 `libggml-vulkan.so`，通过系统 Vulkan 加载器访问 `/vendor/lib64/hw/` 下的真实 GPU 驱动；默认 CPU 后端（最稳定），需要加速时到设置页「GPU 后端」选择 Vulkan，无驱动的设备会自动回退 CPU，运行日志用 `[GPU]` 标注实际生效的后端
 - **液态玻璃 UI**：毛玻璃 + 左上受光内高光，按钮/卡片/聊天气泡全套玻璃质感
 - **聊天界面**：气泡式对话，思考过程（reasoning）以粗体显示在气泡顶部，可选显示推理速度（tokens/s）
 - **日志面板自动滚动**：服务输出新日志时自动滚动到底部；日志同时落盘到 `/storage/emulated/0/ollama-log/`，文件名 `0x_服务启动时间(全数字).log`

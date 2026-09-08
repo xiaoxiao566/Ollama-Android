@@ -145,12 +145,9 @@ public final class Prefs {
 
     // ---------------- GPU 后端 ----------------
 
-    /**
-     * 默认尝试 Vulkan：内置引擎自带 ggml-vulkan 后端，绝大多数 Android 12+
-     * 设备有系统 Vulkan 驱动；没有驱动时引擎会自动回退 CPU（日志中可见）。
-     */
+    /** 默认 CPU（最稳定）。需要加速时到设置页手动选 Vulkan。 */
     public static String gpuBackend(Context c) {
-        return sp(c).getString(KEY_GPU_BACKEND, GPU_VULKAN);
+        return sp(c).getString(KEY_GPU_BACKEND, GPU_CPU);
     }
 
     public static void setGpuBackend(Context c, String v) {

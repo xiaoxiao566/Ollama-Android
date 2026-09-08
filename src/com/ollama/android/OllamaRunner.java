@@ -239,11 +239,18 @@ public final class OllamaRunner {
         env.put("OLLAMA_MODELS", modelsDir.getAbsolutePath());
         env.put("OLLAMA_NOHISTORY", "1");
         env.put("OLLAMA_NOPRUNE", "1");
-        // GPU 后端选择
-        env.put("OLLAMA_VULKAN", vulkan ? "1" : "0");
+        // GPU 后端选择：termux 适配按「变量是否存在」判定启用 Vulkan，
+        // 注入 "0" 也会被当成启用，所以选 CPU 时必须彻底移除该变量。
+        if (vulkan) {
+            env.put("OLLAMA_VULKAN", "1");
+        } else {
+            env.remove("OLLAMA_VULKAN");
+        }
         if (Prefs.GPU_OPENCL.equals(gpu)) {
             // 现代 llama.cpp 已移除 OpenCL 后端；这里仅作标识，实际回退 CPU
             env.put("OLLAMA_OPENCL", "1");
+        } else {
+            env.remove("OLLAMA_OPENCL");
         }
         // 用户设置的服务端数字参数（留空不注入，使用 ollama 默认值）。
         // 键 "port" 映射为 OLLAMA_PORT，与 UI 端口 / bindAddress 保持一致。
