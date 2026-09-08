@@ -86,9 +86,44 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(buildUi());
+        View root = buildUi();
+        setContentView(root);
+        applyEdgeToEdge(root);
         requestNotificationPermissionIfNeeded();
         requestStoragePermissionIfNeeded();
+    }
+
+    /** 全面屏适配：内容延伸到状态栏底下，按系统安全区上边距垫入 padding。 */
+    private void applyEdgeToEdge(final View content) {
+        android.view.Window w = getWindow();
+        w.setStatusBarColor(Color.TRANSPARENT);
+        View decor = w.getDecorView();
+        if (Build.VERSION.SDK_INT >= 30) {
+            w.setDecorFitsSystemWindows(false);
+            w.getInsetsController().setSystemBarsAppearance(
+                    android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
+                    android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
+            decor.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+                @Override
+                public android.view.WindowInsets onApplyWindowInsets(View v, android.view.WindowInsets insets) {
+                    android.graphics.Insets si = insets.getInsets(android.view.WindowInsets.Type.statusBars());
+                    content.setPadding(0, si.top, 0, 0);
+                    return insets;
+                }
+            });
+        } else {
+            decor.setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+            decor.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+                @Override
+                public android.view.WindowInsets onApplyWindowInsets(View v, android.view.WindowInsets insets) {
+                    content.setPadding(0, insets.getSystemWindowInsetTop(), 0, 0);
+                    return insets;
+                }
+            });
+        }
     }
 
     @Override
