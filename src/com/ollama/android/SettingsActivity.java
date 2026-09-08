@@ -176,7 +176,6 @@ public class SettingsActivity extends Activity {
         body.addView(buildBasicCard());
         body.addView(buildAdvancedCard());
         body.addView(buildRunOptionsCard());
-        body.addView(buildSaveButton());
 
         scroll.addView(body, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -215,6 +214,11 @@ public class SettingsActivity extends Activity {
         title.setTextColor(C_TEXT);
         title.setPadding(dp(14), 0, 0, 0);
         header.addView(title);
+
+        // 右上角保存按钮（占位撑开，把按钮顶到右侧）
+        View spacer = new View(this);
+        header.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
+        header.addView(buildSaveButton());
         return header;
     }
 
@@ -524,21 +528,24 @@ public class SettingsActivity extends Activity {
 
     private View buildSaveButton() {
         Button save = new Button(this);
-        save.setText("保存设置");
+        save.setText("保存");
         save.setAllCaps(false);
-        save.setTextSize(16);
+        save.setTextSize(15);
         save.setTypeface(null, Typeface.BOLD);
         save.setTextColor(Color.WHITE);
+        save.setMinWidth(0);
+        save.setMinHeight(0);
+        save.setPadding(dp(18), dp(7), dp(18), dp(7));
 
         GradientDrawable body = new GradientDrawable();
-        body.setCornerRadius(dp(26));
+        body.setCornerRadius(dp(20));
         body.setOrientation(GradientDrawable.Orientation.TL_BR);
         body.setColors(new int[]{0xFF3ED67E, 0xFF1CA85A});
         body.setStroke(hairline(), 0xB3FFFFFF);   // 细内描边
 
         // 左上受光（玻璃光泽）
         GradientDrawable light = new GradientDrawable();
-        light.setCornerRadius(dp(26));
+        light.setCornerRadius(dp(20));
         light.setOrientation(GradientDrawable.Orientation.TL_BR);
         light.setColors(new int[]{0x33FFFFFF, 0x00FFFFFF});
 
@@ -546,14 +553,9 @@ public class SettingsActivity extends Activity {
                 new android.graphics.drawable.LayerDrawable(
                         new android.graphics.drawable.Drawable[]{body, light});
         save.setBackground(ld);
-        save.setPadding(dp(8), dp(14), dp(8), dp(14));
         save.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { save(); }
         });
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, dp(12), 0, 0);
-        save.setLayoutParams(lp);
         return save;
     }
 
