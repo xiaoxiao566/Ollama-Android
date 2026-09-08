@@ -24,6 +24,7 @@ import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -227,19 +228,10 @@ public class MainActivity extends Activity {
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setPadding(dp(18), dp(16), dp(16), dp(10));
 
-        // 应用标识：绿色渐变圆角方块 + 字母
-        TextView mark = new TextView(this);
-        mark.setText("O");
-        mark.setTextSize(20);
-        mark.setTypeface(null, Typeface.BOLD);
-        mark.setTextColor(Color.WHITE);
-        mark.setGravity(Gravity.CENTER);
-        GradientDrawable markBg = new GradientDrawable();
-        markBg.setOrientation(GradientDrawable.Orientation.TL_BR);
-        markBg.setColors(new int[]{C_GREEN_A, C_GREEN_B});
-        markBg.setCornerRadius(dp(13));
-        markBg.setStroke(hairline(), 0x66FFFFFF);
-        mark.setBackground(markBg);
+        // 应用标识：官方 Ollama 羊驼 Logo
+        ImageView mark = new ImageView(this);
+        mark.setImageResource(R.drawable.ic_launcher);
+        mark.setScaleType(ImageView.ScaleType.CENTER_CROP);
         header.addView(mark, new LinearLayout.LayoutParams(dp(42), dp(42)));
 
         LinearLayout titles = new LinearLayout(this);
