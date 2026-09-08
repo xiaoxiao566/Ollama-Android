@@ -7,6 +7,7 @@ import android.content.DialogInterface;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
@@ -14,6 +15,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
@@ -35,9 +37,13 @@ import java.util.List;
  */
 public class SettingsActivity extends Activity {
 
-    private static final int C_PRIMARY = 0xFF4F46E5;
-    private static final int C_BG = 0xFFEAEFF7;
-    private static final int C_CARD = 0xFFFFFFFF;
+    // ---- 配色（与主界面同一套液态玻璃风格） ----
+    private static final int C_BG_TOP = 0xFFF2F6FC;
+    private static final int C_BG_BOTTOM = 0xFFDDE7F3;
+    private static final int C_GREEN_A = 0xFF3ED67E;
+    private static final int C_GREEN_B = 0xFF1CA85A;
+    private static final int C_GLASS = 0xE8FFFFFF;   // 玻璃卡底色（半透明白）
+    private static final int C_GLASS_STROKE = 0x88FFFFFF; // 高光描边
     private static final int C_TEXT = 0xFF1F2937;
     private static final int C_TEXT_SUB = 0xFF6B7280;
     private static final int C_WARN = 0xFFB45309;
@@ -103,39 +109,33 @@ public class SettingsActivity extends Activity {
     }
 
     private View buildUi() {
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(C_BG);
+        FrameLayout root = new FrameLayout(this);
+        root.setBackground(new GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                new int[]{C_BG_TOP, C_BG_BOTTOM}));
 
-        // 标题栏
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(16), dp(12), dp(16), dp(12));
-        header.setBackgroundColor(C_PRIMARY);
+        // 背景柔光（与主界面一致，让玻璃透出颜色）
+        FrameLayout.LayoutParams lp1 = new FrameLayout.LayoutParams(dp(240), dp(240));
+        lp1.gravity = Gravity.TOP | Gravity.END;
+        lp1.topMargin = -dp(90);
+        lp1.rightMargin = -dp(60);
+        root.addView(orb(new int[]{0x40B9E8C8, 0x00B9E8C8}, dp(120)), lp1);
 
-        TextView back = new TextView(this);
-        back.setText("\u2039 返回");
-        back.setTextSize(16);
-        back.setTextColor(Color.WHITE);
-        back.setPadding(0, 0, dp(12), 0);
-        back.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { finish(); }
-        });
-        header.addView(back);
+        FrameLayout.LayoutParams lp2 = new FrameLayout.LayoutParams(dp(180), dp(180));
+        lp2.gravity = Gravity.BOTTOM | Gravity.START;
+        lp2.bottomMargin = -dp(70);
+        lp2.leftMargin = -dp(50);
+        root.addView(orb(new int[]{0x3394B9FF, 0x0094B9FF}, dp(90)), lp2);
 
-        TextView title = new TextView(this);
-        title.setText("设置");
-        title.setTextSize(19);
-        title.setTypeface(null, Typeface.BOLD);
-        title.setTextColor(Color.WHITE);
-        header.addView(title);
-        root.addView(header);
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+
+        col.addView(buildHeader());
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding(dp(14), dp(10), dp(14), dp(20));
+        body.setPadding(dp(16), dp(4), dp(16), dp(20));
 
         body.addView(buildGpuCard());
         body.addView(buildBasicCard());
@@ -145,9 +145,42 @@ public class SettingsActivity extends Activity {
 
         scroll.addView(body, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        root.addView(scroll, new LinearLayout.LayoutParams(
+        col.addView(scroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        root.addView(col, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         return root;
+    }
+
+    /** 液态玻璃标题栏：磨砂返回药丸 + 标题（与主界面同风格）。 */
+    private View buildHeader() {
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(12), dp(16), dp(16), dp(10));
+
+        TextView back = new TextView(this);
+        back.setText("\u2039 返回");
+        back.setTextSize(15);
+        back.setTypeface(null, Typeface.BOLD);
+        back.setTextColor(C_TEXT);
+        back.setGravity(Gravity.CENTER);
+        back.setPadding(dp(14), dp(7), dp(14), dp(7));
+        back.setBackground(frostPill());
+        back.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { finish(); }
+        });
+        header.addView(back);
+
+        TextView title = new TextView(this);
+        title.setText("设置");
+        title.setTextSize(20);
+        title.setTypeface(null, Typeface.BOLD);
+        title.setTextColor(C_TEXT);
+        title.setPadding(dp(14), 0, 0, 0);
+        header.addView(title);
+        return header;
     }
 
     // ================= GPU 后端 =================
@@ -157,12 +190,7 @@ public class SettingsActivity extends Activity {
         card.setPadding(dp(16), dp(14), dp(16), dp(14));
         card.setOrientation(LinearLayout.VERTICAL);
 
-        TextView label = new TextView(this);
-        label.setText("GPU 后端");
-        label.setTextSize(14);
-        label.setTypeface(null, Typeface.BOLD);
-        label.setTextColor(C_TEXT);
-        card.addView(label);
+        card.addView(sectionLabel("GPU 后端"));
 
         RadioGroup rg = new RadioGroup(this);
         rg.setOrientation(LinearLayout.VERTICAL);
@@ -193,12 +221,7 @@ public class SettingsActivity extends Activity {
         card.setPadding(dp(16), dp(14), dp(16), dp(14));
         card.setOrientation(LinearLayout.VERTICAL);
 
-        TextView label = new TextView(this);
-        label.setText("变量 · 基础参数");
-        label.setTextSize(14);
-        label.setTypeface(null, Typeface.BOLD);
-        label.setTextColor(C_TEXT);
-        card.addView(label);
+        card.addView(sectionLabel("变量 · 基础参数"));
 
         TextView sub = new TextView(this);
         sub.setText("常用调整项，留空 = 使用 ollama 默认值");
@@ -297,12 +320,7 @@ public class SettingsActivity extends Activity {
         card.setPadding(dp(16), dp(14), dp(16), dp(14));
         card.setOrientation(LinearLayout.VERTICAL);
 
-        TextView label = new TextView(this);
-        label.setText("模型运行选项");
-        label.setTextSize(14);
-        label.setTypeface(null, Typeface.BOLD);
-        label.setTextColor(C_TEXT);
-        card.addView(label);
+        card.addView(sectionLabel("模型运行选项"));
 
         TextView sub = new TextView(this);
         sub.setText("对应 ollama run 的命令行后缀，扩展模型使用方式");
@@ -350,7 +368,7 @@ public class SettingsActivity extends Activity {
         keepAliveEdit.setTextColor(C_TEXT);
         keepAliveEdit.setHintTextColor(C_TEXT_SUB);
         keepAliveEdit.setPadding(dp(12), dp(10), dp(12), dp(10));
-        keepAliveEdit.setBackground(round(0xFFF3F4F6, dp(12)));
+        keepAliveEdit.setBackground(glassRound(dp(16), 0xAAFFFFFF, 0x66FFFFFF));
         keepAliveEdit.setTag(Prefs.KEY_KEEP_ALIVE);
         kaWrap.addView(keepAliveEdit, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -375,7 +393,7 @@ public class SettingsActivity extends Activity {
         systemEdit.setTextColor(C_TEXT);
         systemEdit.setHintTextColor(C_TEXT_SUB);
         systemEdit.setPadding(dp(12), dp(10), dp(12), dp(10));
-        systemEdit.setBackground(round(0xFFF3F4F6, dp(12)));
+        systemEdit.setBackground(glassRound(dp(16), 0xAAFFFFFF, 0x66FFFFFF));
         systemEdit.setTag(Prefs.KEY_SYSTEM_PROMPT);
         sysWrap.addView(systemEdit, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -440,7 +458,7 @@ public class SettingsActivity extends Activity {
         e.setTextColor(C_TEXT);
         e.setHintTextColor(C_TEXT_SUB);
         e.setPadding(dp(12), dp(10), dp(12), dp(10));
-        e.setBackground(round(0xFFF3F4F6, dp(12)));
+        e.setBackground(glassRound(dp(16), 0xAAFFFFFF, 0x66FFFFFF));
         e.setTag(p.key);
         wrap.addView(e, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -485,16 +503,80 @@ public class SettingsActivity extends Activity {
 
     // ================= 样式工具 =================
 
+    /** 液态玻璃卡片：半透明白底 + 高光描边 + 悬浮阴影（与主界面一致）。 */
     private LinearLayout card() {
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
-        c.setBackground(round(C_CARD, dp(14)));
-        c.setElevation(dp(2));
+        c.setBackground(glassRound(dp(20), C_GLASS, C_GLASS_STROKE));
+        if (Build.VERSION.SDK_INT >= 28) {
+            c.setElevation(dp(4));
+            c.setOutlineAmbientShadowColor(0x1F000000);
+            c.setOutlineSpotShadowColor(0x22000000);
+        } else {
+            c.setElevation(dp(3));
+        }
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMargins(0, dp(8), 0, dp(8));
         c.setLayoutParams(lp);
         return c;
+    }
+
+    /** 分区标题：绿色小圆点 + 加粗文字（与主界面同款）。 */
+    private View sectionLabel(String text) {
+        LinearLayout wrap = new LinearLayout(this);
+        wrap.setOrientation(LinearLayout.HORIZONTAL);
+        wrap.setGravity(Gravity.CENTER_VERTICAL);
+        wrap.setPadding(0, 0, 0, dp(8));
+
+        View dot = new View(this);
+        GradientDrawable d = new GradientDrawable();
+        d.setShape(GradientDrawable.OVAL);
+        d.setColors(new int[]{C_GREEN_A, C_GREEN_B});
+        dot.setBackground(d);
+        wrap.addView(dot, new LinearLayout.LayoutParams(dp(6), dp(6)));
+
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTextSize(13);
+        t.setTypeface(null, Typeface.BOLD);
+        t.setTextColor(C_TEXT);
+        t.setPadding(dp(6), 0, 0, 0);
+        wrap.addView(t);
+        return wrap;
+    }
+
+    /** 磨砂药丸：半透明白底 + 高光描边（返回按钮用）。 */
+    private GradientDrawable frostPill() {
+        GradientDrawable d = new GradientDrawable();
+        d.setCornerRadius(dp(20));
+        d.setColor(0xD9FFFFFF);
+        d.setStroke(hairline(), 0xAAFFFFFF);
+        return d;
+    }
+
+    /** 玻璃圆角底：半透明白 + 可选描边。 */
+    private GradientDrawable glassRound(int radius, int fill, int stroke) {
+        GradientDrawable d = new GradientDrawable();
+        d.setCornerRadius(radius);
+        d.setColor(fill);
+        if (stroke != 0) {
+            d.setStroke(hairline(), stroke);
+        }
+        return d;
+    }
+
+    /** 背景柔光圆块（径向渐变压暗的边缘）。 */
+    private View orb(int[] colors, int radius) {
+        android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+        g.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        g.setGradientType(android.graphics.drawable.GradientDrawable.RADIAL_GRADIENT);
+        g.setGradientRadius(radius);
+        g.setGradientCenter(0.5f, 0.5f);
+        g.setColors(colors);
+        View v = new View(this);
+        v.setBackground(g);
+        return v;
     }
 
     private GradientDrawable round(int color, int radius) {
