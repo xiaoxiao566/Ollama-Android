@@ -787,105 +787,122 @@ public class MainActivity extends Activity {
 
         new Thread(new Runnable() {
             @Override public void run() {
-                HttpURLConnection conn = null;
-                try {
-                    String opts = buildOptionsJson();
-                    StringBuilder body = new StringBuilder();
-                    body.append("{\"model\":\"").append(escape(model)).append("\"");
-                    body.append(",\"messages\":[{\"role\":\"user\",\"content\":\"")
-                            .append(escape(prompt)).append("\"}]");
-                    body.append(",\"stream\":true");
-                    if (!opts.isEmpty()) {
-                        body.append(",\"options\":{").append(opts).append("}");
-                    }
-                    String ka = Prefs.getStr(MainActivity.this, Prefs.KEY_KEEP_ALIVE).trim();
-                    if (!ka.isEmpty()) {
-                        body.append(",\"keep_alive\":\"").append(escape(ka)).append("\"");
-                    }
-                    String sys = Prefs.getStr(MainActivity.this, Prefs.KEY_SYSTEM_PROMPT).trim();
-                    if (!sys.isEmpty()) {
-                        body.append(",\"system\":\"").append(escape(sys)).append("\"");
-                    }
-                    body.append(",\"think\":")
-                            .append(Prefs.think(MainActivity.this) && !Prefs.hideThinking(MainActivity.this));
-                    if (Prefs.experimental(MainActivity.this)) {
-                        body.append(",\"experimental\":true");
-                    }
-                    body.append("}");
+                // 部分模型不支持思考（如 qwen2.5 报 "does not support thinking"）：
+                // 带 think 请求失败时自动去掉 think 重试一次，qwen3 等支持思考的不受影响。
+                boolean think = Prefs.think(MainActivity.this) && !Prefs.hideThinking(MainActivity.this);
+                for (int attempt = 0; attempt < 2; attempt++) {
+                    boolean withThink = think && attempt == 0;
+                    HttpURLConnection conn = null;
+                    try {
+                        String body = buildChatBody(model, prompt, withThink);
+                        URL url = new URL("http://" + Prefs.bindAddress(MainActivity.this) + "/api/chat");
+                        conn = (HttpURLConnection) url.openConnection();
+                        conn.setRequestMethod("POST");
+                        conn.setConnectTimeout(15000);
+                        conn.setReadTimeout(600000); // 单次最长等 10 分钟，卡死也能自动报错
+                        conn.setRequestProperty("Content-Type", "application/json");
+                        conn.setDoOutput(true);
+                        OutputStream os = conn.getOutputStream();
+                        os.write(body.toString().getBytes("UTF-8"));
+                        os.flush();
+                        os.close();
 
-                    URL url = new URL("http://" + Prefs.bindAddress(MainActivity.this) + "/api/chat");
-                    conn = (HttpURLConnection) url.openConnection();
-                    conn.setRequestMethod("POST");
-                    conn.setConnectTimeout(15000);
-                    conn.setReadTimeout(600000); // 单次最长等 10 分钟，卡死也能自动报错
-                    conn.setRequestProperty("Content-Type", "application/json");
-                    conn.setDoOutput(true);
-                    OutputStream os = conn.getOutputStream();
-                    os.write(body.toString().getBytes("UTF-8"));
-                    os.flush();
-                    os.close();
+                        int code = conn.getResponseCode();
+                        InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
+                        if (is == null) {
+                            is = conn.getInputStream();
+                        }
 
-                    int code = conn.getResponseCode();
-                    InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-                    if (is == null) {
-                        is = conn.getInputStream();
-                    }
-
-                    StringBuilder reason = new StringBuilder();
-                    StringBuilder content = new StringBuilder();
-                    String error = null;
-                    long evalCount = 0, evalNs = 0, totalNs = 0;
-                    boolean done = false;
-                    long lastUi = 0;
-                    BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
-                    String line;
-                    while ((line = br.readLine()) != null) {
-                        line = line.trim();
-                        if (line.isEmpty() || !line.startsWith("{")) {
+                        StringBuilder reason = new StringBuilder();
+                        StringBuilder content = new StringBuilder();
+                        String error = null;
+                        long evalCount = 0, evalNs = 0, totalNs = 0;
+                        boolean done = false;
+                        long lastUi = 0;
+                        BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+                        String line;
+                        while ((line = br.readLine()) != null) {
+                            line = line.trim();
+                            if (line.isEmpty() || !line.startsWith("{")) {
+                                continue;
+                            }
+                            String rc = extractJsonField(line, "reasoning_content");
+                            String c = extractJsonField(line, "content");
+                            String e = extractJsonField(line, "error");
+                            if (rc != null && !rc.isEmpty()) {
+                                reason.append(rc);
+                            }
+                            if (c != null && !c.isEmpty()) {
+                                content.append(c);
+                            }
+                            if (e != null && !e.isEmpty()) {
+                                error = e;
+                            }
+                            if (line.contains("\"done\":true")) {
+                                done = true;
+                                evalCount = parseLongSafe(extractJsonNumber(line, "eval_count"), 0);
+                                evalNs = parseLongSafe(extractJsonNumber(line, "eval_duration"), 0);
+                                totalNs = parseLongSafe(extractJsonNumber(line, "total_duration"), 0);
+                            }
+                            // 节流：最多每 80ms 刷一次 UI
+                            long now = SystemClock.uptimeMillis();
+                            if (now - lastUi >= 80) {
+                                lastUi = now;
+                                pushStream(reason.toString(), content.toString(), error, done,
+                                        evalCount, evalNs, totalNs, false);
+                            }
+                        }
+                        br.close();
+                        if (withThink && error != null && error.contains("does not support thinking")) {
+                            // 模型不支持思考：去掉 think 自动重试
+                            pushStream("", "", "该模型不支持思考，已自动关闭思考重试…", true, 0, 0, 0, true);
                             continue;
                         }
-                        String rc = extractJsonField(line, "reasoning_content");
-                        String c = extractJsonField(line, "content");
-                        String e = extractJsonField(line, "error");
-                        if (rc != null && !rc.isEmpty()) {
-                            reason.append(rc);
+                        pushStream(reason.toString(), content.toString(), error, done,
+                                evalCount, evalNs, totalNs, true);
+                        if (error == null && !done) {
+                            pushStream(reason.toString(), content.toString(),
+                                    "流式响应未正常结束，请查看日志", true, 0, 0, 0, true);
                         }
-                        if (c != null && !c.isEmpty()) {
-                            content.append(c);
+                        return;
+                    } catch (final Exception ex) {
+                        pushStream("", "", "对话失败：" + ex.getMessage(), true, 0, 0, 0, true);
+                        return;
+                    } finally {
+                        if (conn != null) {
+                            conn.disconnect();
                         }
-                        if (e != null && !e.isEmpty()) {
-                            error = e;
-                        }
-                        if (line.contains("\"done\":true")) {
-                            done = true;
-                            evalCount = parseLongSafe(extractJsonNumber(line, "eval_count"), 0);
-                            evalNs = parseLongSafe(extractJsonNumber(line, "eval_duration"), 0);
-                            totalNs = parseLongSafe(extractJsonNumber(line, "total_duration"), 0);
-                        }
-                        // 节流：最多每 80ms 刷一次 UI
-                        long now = SystemClock.uptimeMillis();
-                        if (now - lastUi >= 80) {
-                            lastUi = now;
-                            pushStream(reason.toString(), content.toString(), error, done,
-                                    evalCount, evalNs, totalNs, false);
-                        }
-                    }
-                    br.close();
-                    pushStream(reason.toString(), content.toString(), error, done,
-                            evalCount, evalNs, totalNs, true);
-                    if (error == null && !done) {
-                        pushStream(reason.toString(), content.toString(),
-                                "流式响应未正常结束，请查看日志", true, 0, 0, 0, true);
-                    }
-                } catch (final Exception ex) {
-                    pushStream("", "", "对话失败：" + ex.getMessage(), true, 0, 0, 0, true);
-                } finally {
-                    if (conn != null) {
-                        conn.disconnect();
                     }
                 }
             }
         }).start();
+    }
+
+    /** 组装 /api/chat 请求体；think 参数按模型能力控制（不支持思考的模型会自动关闭重试）。 */
+    private String buildChatBody(String model, String prompt, boolean think) {
+        StringBuilder body = new StringBuilder();
+        body.append("{\"model\":\"").append(escape(model)).append("\"");
+        body.append(",\"messages\":[{\"role\":\"user\",\"content\":\"")
+                .append(escape(prompt)).append("\"}]");
+        body.append(",\"stream\":true");
+        String opts = buildOptionsJson();
+        if (!opts.isEmpty()) {
+            body.append(",\"options\":{").append(opts).append("}");
+        }
+        String ka = Prefs.getStr(this, Prefs.KEY_KEEP_ALIVE).trim();
+        if (!ka.isEmpty()) {
+            body.append(",\"keep_alive\":\"").append(escape(ka)).append("\"");
+        }
+        String sys = Prefs.getStr(this, Prefs.KEY_SYSTEM_PROMPT).trim();
+        if (!sys.isEmpty()) {
+            body.append(",\"system\":\"").append(escape(sys)).append("\"");
+        }
+        body.append(",\"think\":").append(think);
+        if (Prefs.experimental(this)) {
+            body.append(",\"experimental\":true");
+        }
+        body.append("}");
+        return body.toString();
     }
 
     /**
