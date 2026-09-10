@@ -15,6 +15,8 @@ public final class Prefs {
     public static final String GPU_CPU = "cpu";
     public static final String GPU_VULKAN = "vulkan";
     public static final String GPU_OPENCL = "opencl";
+    /** CPU + GPU 混合：按 num_gpu 层数分配，GPU 装不下自动回退 CPU。 */
+    public static final String GPU_MIX = "mix";
 
     private static final String FILE = "ollama_prefs";
     private static final String KEY_GPU_BACKEND = "gpu_backend";

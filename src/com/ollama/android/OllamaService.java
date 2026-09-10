@@ -121,21 +121,29 @@ public class OllamaService extends Service {
     }
 
     private void logStartupConfig() {
-        // 运算方式 = CPU / CPU+GPU 混合，由 GPU 层数决定：
-        // 填了层数（-1 或具体数字）即自动启用 GPU 加速，默认不填就是纯 CPU。
+        // 运算方式 = CPU / CPU+GPU 混合，由 GPU 后端与层数共同决定：
+        // 选了 CPU+GPU 或填了层数（-1 / 具体数字）即走混合；否则纯 CPU。
+        String backend = Prefs.gpuBackend(this);
         String ng = Prefs.getStr(this, "num_gpu").trim();
+        boolean mixBackend = Prefs.GPU_MIX.equals(backend);
         boolean wantGpu = !ng.isEmpty() && !"0".equals(ng);
-        boolean gpuAccel = Prefs.GPU_VULKAN.equals(Prefs.gpuBackend(this)) || wantGpu;
+        boolean gpuAccel = Prefs.GPU_VULKAN.equals(backend) || mixBackend || wantGpu;
 
         String mode;
-        if (ng.isEmpty()) {
-            mode = "纯 CPU（未设置 GPU 层数，想混合可在弹窗或设置里填层数）";
-        } else if ("0".equals(ng)) {
-            mode = "纯 CPU";
-        } else if ("-1".equals(ng)) {
-            mode = "CPU + GPU 混合（GPU 自动分配层数，装不下自动回退 CPU）";
+        if (mixBackend) {
+            if ("-1".equals(ng)) {
+                mode = "CPU + GPU 混合（GPU 自动分配层数，装不下自动回退 CPU）";
+            } else if (wantGpu) {
+                mode = "CPU + GPU 混合（前 " + ng + " 层走 GPU，其余走 CPU）";
+            } else {
+                mode = "CPU + GPU 混合（未填层数，GPU 自动分配）";
+            }
+        } else if (wantGpu) {
+            mode = "-1".equals(ng)
+                    ? "CPU + GPU 混合（GPU 自动分配层数，装不下自动回退 CPU）"
+                    : "CPU + GPU 混合（前 " + ng + " 层走 GPU，其余走 CPU）";
         } else {
-            mode = "CPU + GPU 混合（前 " + ng + " 层走 GPU，其余走 CPU）";
+            mode = "纯 CPU";
         }
         appendLog("== 运行配置 ==");
         appendLog("运算方式: " + mode);
@@ -181,11 +189,14 @@ public class OllamaService extends Service {
                         || low.contains("ggml_vk") || low.contains("vulkan device"))) {
                     vulkanDetected = true;
                     appendLog("[GPU] 已启用 Vulkan 加速（" + line.trim() + "）");
-                    if (!Prefs.GPU_VULKAN.equals(Prefs.gpuBackend(this))) {
-                        appendLog("[GPU] 警告：设置未选择 Vulkan，但引擎仍加载了 Vulkan（环境变量残留？）");
+                    String gpuB = Prefs.gpuBackend(this);
+                    if (!Prefs.GPU_VULKAN.equals(gpuB) && !Prefs.GPU_MIX.equals(gpuB)) {
+                        appendLog("[GPU] 警告：设置未选 GPU 后端，但引擎仍加载了 Vulkan（环境变量残留？）");
                     }
                 }
-                if (!cpuFallbackWarned && Prefs.GPU_VULKAN.equals(Prefs.gpuBackend(this))
+                if (!cpuFallbackWarned
+                        && (Prefs.GPU_VULKAN.equals(Prefs.gpuBackend(this))
+                        || Prefs.GPU_MIX.equals(Prefs.gpuBackend(this)))
                         && (low.contains("no suitable") || low.contains("no compatible"))) {
                     cpuFallbackWarned = true;
                     appendLog("[GPU] 未发现可用 Vulkan 设备，已回退 CPU 推理（速度会明显变慢）");

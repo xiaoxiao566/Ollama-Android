@@ -208,11 +208,13 @@ public final class OllamaRunner {
         prepare();
         File exe = new File(libOllama, "ollama");
         String gpu = Prefs.gpuBackend(context);
-        // 填了 GPU 层数（-1 或具体数字）就自动启用 GPU 加速做 CPU+GPU 混合，
-        // 不用再先去设置页选后端；没填层数时按设置页选择（默认 CPU 最稳）。
+        // GPU 加速条件：后端选了 Vulkan / CPU+GPU，或填了 GPU 层数（-1 或具体数字）。
+        // 没填层数也没选 GPU 相关后端时保持纯 CPU（最稳）。
         String numGpuStr = Prefs.getStr(context, "num_gpu").trim();
         boolean wantGpu = !numGpuStr.isEmpty() && !"0".equals(numGpuStr);
-        boolean vulkan = Prefs.GPU_VULKAN.equals(gpu) || wantGpu;
+        boolean vulkan = Prefs.GPU_VULKAN.equals(gpu)
+                || Prefs.GPU_MIX.equals(gpu)
+                || wantGpu;
 
         List<String> cmd = new ArrayList<String>();
         cmd.add(SYSTEM_LINKER);

@@ -97,7 +97,6 @@ public class MainActivity extends Activity {
         applyEdgeToEdge(root);
         requestNotificationPermissionIfNeeded();
         requestStoragePermissionIfNeeded();
-        maybeAskGpuLayers();
     }
 
     /** 全面屏适配：内容延伸到状态栏底下，按系统安全区上边距垫入 padding。 */
@@ -158,57 +157,6 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         try { unregisterReceiver(receiver); } catch (Exception ignored) {}
-    }
-
-    // ================= CPU+GPU 混合运算（GPU 层数） =================
-
-    /**
-     * 首次打开时弹窗问一下 GPU 层数：0 纯 CPU，>0 前 N 层走 GPU 其余走 CPU，
-     * -1 全部交给 GPU（装不下会自动回退）。设过就不再打扰，想改随时去设置页。
-     */
-    private void maybeAskGpuLayers() {
-        if (!Prefs.getStr(this, "num_gpu").isEmpty()) {
-            return;
-        }
-        long gb = OllamaRunner.totalMemMB() / 1024;
-        int rec = recommendGpuLayers();
-
-        final EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED);
-        input.setText(String.valueOf(rec));
-        input.setSelection(input.getText().length());
-        input.setTextSize(16);
-        input.setPadding(dp(14), dp(10), dp(14), dp(10));
-
-        new AlertDialog.Builder(this)
-                .setTitle("CPU + GPU 混合运算")
-                .setMessage("设备内存约 " + gb + " GB（可能不是很准）\n\n"
-                        + "推荐 " + rec + " 层\n\n"
-                        + "-1 为完全由 GPU 运算，0 是 CPU，如果你填的是具体的数字，例如\"10\"则是十层走 GPU，剩下来的全部走 CPU\n\n"
-                        + "GPU 层数想改的自己去设置调")
-                .setView(input)
-                .setPositiveButton("确定", new DialogInterface.OnClickListener() {
-                    @Override public void onClick(DialogInterface d, int w) {
-                        String v = input.getText().toString().trim();
-                        if (v.isEmpty()) {
-                            return;
-                        }
-                        Prefs.setStr(MainActivity.this, "num_gpu", v);
-                        Toast.makeText(MainActivity.this,
-                                "GPU 层数已设为 " + v + "，重启服务后生效", Toast.LENGTH_SHORT).show();
-                    }
-                })
-                .setNegativeButton("跳过", null)
-                .show();
-    }
-
-    /** 按内存粗略估个层数：内存越大越激进，小内存保守点，免得显存不够反而更卡。 */
-    private int recommendGpuLayers() {
-        long gb = OllamaRunner.totalMemMB() / 1024;
-        if (gb >= 12) return 32;
-        if (gb >= 8) return 24;
-        if (gb >= 6) return 16;
-        return 8;
     }
 
     // ================= UI =================
@@ -426,17 +374,10 @@ public class MainActivity extends Activity {
         row.addView(pullBtn, plp);
 
         card.addView(row, matchWidth(-2));
-
-        TextView hint = new TextView(this);
-        hint.setText("拉取需联网，进度会实时显示在上方日志里");
-        hint.setTextSize(12);
-        hint.setTextColor(C_TEXT_SUB);
-        hint.setPadding(dp(2), 0, 0, dp(2));
-        card.addView(hint);
         return card;
     }
 
-    /** 对话卡片：输入区 + 气泡式对话区（思考过程粗体写在模型气泡里）。 */
+    /** 对话卡片：气泡列表 + 底部输入条（输入框与发送按钮并排，聊天式布局）。 */
     private View buildChatCard() {
         LinearLayout card = glassCard();
         card.setPadding(dp(16), dp(14), dp(16), dp(14));
@@ -444,22 +385,29 @@ public class MainActivity extends Activity {
 
         card.addView(sectionLabel("对话"));
 
+        // 气泡列表：消息按顺序追加（随主页面滚动）
+        chatContainer = new LinearLayout(this);
+        chatContainer.setOrientation(LinearLayout.VERTICAL);
+        card.addView(chatContainer, matchWidth(-2));
+
+        // 输入条：输入框 + 发送按钮同一行
+        LinearLayout inputRow = new LinearLayout(this);
+        inputRow.setOrientation(LinearLayout.HORIZONTAL);
+        inputRow.setGravity(Gravity.BOTTOM);
+        inputRow.setPadding(0, dp(10), 0, 0);
+
         promptEdit = new EditText(this);
         promptEdit.setHint("输入问题…");
         promptEdit.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         promptEdit.setTextSize(15);
         promptEdit.setTextColor(C_TEXT);
         promptEdit.setHintTextColor(C_TEXT_SUB);
-        promptEdit.setMinLines(2);
+        promptEdit.setMinLines(1);
         promptEdit.setMaxLines(4);
+        promptEdit.setGravity(Gravity.TOP | Gravity.START);
         promptEdit.setPadding(dp(14), dp(11), dp(14), dp(11));
-        promptEdit.setBackground(glassRound(dp(16), 0xAAFFFFFF, 0x66FFFFFF));
-        card.addView(promptEdit, matchWidth(-2));
-
-        // 发送按钮：右侧小胶囊，像聊天工具那样
-        LinearLayout sendRow = new LinearLayout(this);
-        sendRow.setOrientation(LinearLayout.HORIZONTAL);
-        sendRow.setGravity(Gravity.END);
+        promptEdit.setBackground(glassRound(dp(20), 0xAAFFFFFF, 0x66FFFFFF));
+        inputRow.addView(promptEdit, new LinearLayout.LayoutParams(0, -2, 1f));
 
         Button sendBtn = new Button(this);
         sendBtn.setText("发送");
@@ -467,12 +415,11 @@ public class MainActivity extends Activity {
         sendBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { sendChat(); }
         });
-        sendRow.addView(sendBtn, new LinearLayout.LayoutParams(dp(104), -2));
-        card.addView(sendRow, matchWidth(-2));
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(dp(88), dp(46));
+        blp.leftMargin = dp(8);
+        inputRow.addView(sendBtn, blp);
 
-        chatContainer = new LinearLayout(this);
-        chatContainer.setOrientation(LinearLayout.VERTICAL);
-        card.addView(chatContainer, matchWidth(-2));
+        card.addView(inputRow, matchWidth(-2));
         return card;
     }
 

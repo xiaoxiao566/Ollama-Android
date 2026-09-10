@@ -29,7 +29,7 @@ import java.util.List;
 
 /**
  * 设置页：
- *  - GPU 后端（CPU / Vulkan / OpenCL）
+ *  - GPU 后端（CPU / Vulkan / OpenCL / CPU+GPU）
  *  - 「变量」：基础参数（并发、端口、上下文、采样等，可放心调整）
  *  - 「高级」：与模型架构/内存强相关的参数，点开前弹警告，
  *    设置不当可能导致模型无法正常加载或运行。
@@ -93,7 +93,8 @@ public class SettingsActivity extends Activity {
             new Param("tfs_z", "tfs_z", "尾部频率采样（默认 1 关闭）"),
     };
 
-    private RadioButton rCpu, rVulkan, rOpencl;
+    private RadioButton rCpu, rVulkan, rOpencl, rMix;
+    private boolean applyingGpuSelection = false; // 程序恢复选中时跳过弹窗
     private LinearLayout advancedBody;
     private boolean advancedExpanded = false;
     private final List<EditText> allFields = new ArrayList<EditText>();
@@ -234,17 +235,26 @@ public class SettingsActivity extends Activity {
         RadioGroup rg = new RadioGroup(this);
         rg.setOrientation(LinearLayout.VERTICAL);
 
-        rCpu = radio("CPU  ——  最稳定，所有机型通用");
+        rCpu = radio("CPU");
         rCpu.setId(0x6001);
-        rVulkan = radio("Vulkan  ——  推荐，走系统 GPU 驱动加速");
+        rVulkan = radio("Vulkan");
         rVulkan.setId(0x6002);
-        rOpencl = radio("OpenCL  ——  实验性（多数手机无驱动，会回退 CPU）");
+        rOpencl = radio("OpenCL");
         rOpencl.setId(0x6003);
+        rMix = radio("CPU+GPU");
+        rMix.setId(0x6004);
 
-        // 选中即生效：不依赖底部的「保存设置」按钮，切换后重启服务即可
+        // 选中即生效；切到 CPU+GPU 时先弹窗确认 GPU 层数，取消则恢复原选择
         rg.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(RadioGroup group, int checkedId) {
+                if (applyingGpuSelection) {
+                    return;
+                }
+                if (checkedId == 0x6004) {
+                    showGpuLayerDialog();
+                    return;
+                }
                 String v = Prefs.GPU_CPU;
                 if (checkedId == 0x6002) v = Prefs.GPU_VULKAN;
                 else if (checkedId == 0x6003) v = Prefs.GPU_OPENCL;
@@ -255,15 +265,76 @@ public class SettingsActivity extends Activity {
         rg.addView(rCpu);
         rg.addView(rVulkan);
         rg.addView(rOpencl);
+        rg.addView(rMix);
         card.addView(rg);
-
-        TextView hint = new TextView(this);
-        hint.setText("默认 CPU，最稳；填了 GPU 层数（num_gpu）会自动启用 GPU 加速做混合运算，不用手动切后端");
-        hint.setTextSize(12);
-        hint.setTextColor(C_TEXT_SUB);
-        hint.setPadding(0, dp(6), 0, 0);
-        card.addView(hint);
         return card;
+    }
+
+    /** 切到 CPU+GPU 时弹窗填 GPU 层数；取消/空值则恢复为之前的后端。 */
+    private void showGpuLayerDialog() {
+        long gb = OllamaRunner.totalMemMB() / 1024;
+        int rec = recommendGpuLayers();
+        String cur = Prefs.getStr(this, "num_gpu").trim();
+
+        final EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED);
+        input.setText(cur.isEmpty() ? String.valueOf(rec) : cur);
+        input.setSelection(input.getText().length());
+        input.setTextSize(16);
+        input.setPadding(dp(14), dp(10), dp(14), dp(10));
+
+        new AlertDialog.Builder(this)
+                .setTitle("CPU + GPU 混合运算")
+                .setMessage("设备内存约 " + gb + " GB（可能不是很准）\n\n"
+                        + "推荐 " + rec + " 层\n\n"
+                        + "-1 为完全由 GPU 运算，0 是 CPU，如果你填的是具体的数字，例如\"10\"则是十层走 GPU，剩下来的全部走 CPU\n\n"
+                        + "GPU 层数想改的自己去设置调")
+                .setView(input)
+                .setPositiveButton("确定", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        String v = input.getText().toString().trim();
+                        if (v.isEmpty()) {
+                            restoreGpuSelection();
+                            return;
+                        }
+                        Prefs.setStr(SettingsActivity.this, "num_gpu", v);
+                        Prefs.setGpuBackend(SettingsActivity.this, Prefs.GPU_MIX);
+                        Toast.makeText(SettingsActivity.this,
+                                "CPU+GPU 混合已启用（GPU " + v + " 层），重启服务后生效",
+                                Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("取消", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        restoreGpuSelection();
+                    }
+                })
+                .setOnCancelListener(new DialogInterface.OnCancelListener() {
+                    @Override public void onCancel(DialogInterface d) {
+                        restoreGpuSelection();
+                    }
+                })
+                .show();
+    }
+
+    /** 按内存粗略估层数：内存越大越激进，小内存保守点，免得显存不够反而更卡。 */
+    private int recommendGpuLayers() {
+        long gb = OllamaRunner.totalMemMB() / 1024;
+        if (gb >= 12) return 32;
+        if (gb >= 8) return 24;
+        if (gb >= 6) return 16;
+        return 8;
+    }
+
+    /** 弹窗取消时把单选恢复为当前实际生效的后端。 */
+    private void restoreGpuSelection() {
+        applyingGpuSelection = true;
+        String gpu = Prefs.gpuBackend(this);
+        if (Prefs.GPU_VULKAN.equals(gpu)) rVulkan.setChecked(true);
+        else if (Prefs.GPU_OPENCL.equals(gpu)) rOpencl.setChecked(true);
+        else if (Prefs.GPU_MIX.equals(gpu)) rMix.setChecked(true);
+        else rCpu.setChecked(true);
+        applyingGpuSelection = false;
     }
 
     private RadioButton radio(String text) {
@@ -282,13 +353,6 @@ public class SettingsActivity extends Activity {
         card.setOrientation(LinearLayout.VERTICAL);
 
         card.addView(sectionLabel("变量 · 基础参数"));
-
-        TextView sub = new TextView(this);
-        sub.setText("常用调整项，留空 = 使用 ollama 默认值");
-        sub.setTextSize(12);
-        sub.setTextColor(C_TEXT_SUB);
-        sub.setPadding(0, dp(2), 0, dp(8));
-        card.addView(sub);
 
         for (Param p : BASIC_PARAMS) {
             card.addView(paramField(p));
@@ -382,34 +446,20 @@ public class SettingsActivity extends Activity {
 
         card.addView(sectionLabel("模型运行选项"));
 
-        TextView sub = new TextView(this);
-        sub.setText("对应 ollama run 的命令行后缀，扩展模型使用方式");
-        sub.setTextSize(12);
-        sub.setTextColor(C_TEXT_SUB);
-        sub.setPadding(0, dp(2), 0, dp(6));
-        card.addView(sub);
-
         swVerbose = new Switch(this);
-        card.addView(switchRow("显示推理速度",
-                "--verbose：对话末尾显示 tokens/s 速度统计", swVerbose));
+        card.addView(switchRow("显示推理速度", swVerbose));
         swNoWordWrap = new Switch(this);
-        card.addView(switchRow("不自动换行",
-                "--nowordwrap：输出不折行，横向滚动查看原文", swNoWordWrap));
+        card.addView(switchRow("不自动换行", swNoWordWrap));
         swInsecure = new Switch(this);
-        card.addView(switchRow("允许不安全连接",
-                "--insecure：拉取模型时不校验证书", swInsecure));
+        card.addView(switchRow("允许不安全连接", swInsecure));
         swThink = new Switch(this);
-        card.addView(switchRow("显示思考过程",
-                "--think：展示模型的思考内容", swThink));
+        card.addView(switchRow("显示思考过程", swThink));
         swHideThinking = new Switch(this);
-        card.addView(switchRow("隐藏思考过程",
-                "--hidethinking：不展示思考内容（优先于“显示思考过程”）", swHideThinking));
+        card.addView(switchRow("隐藏思考过程", swHideThinking));
         swExperimental = new Switch(this);
-        card.addView(switchRow("启用实验特性",
-                "--experimental：启用 ollama 实验性功能", swExperimental));
+        card.addView(switchRow("启用实验特性", swExperimental));
         swWebSearch = new Switch(this);
-        card.addView(switchRow("实验性网络搜索",
-                "--experimental-websearch：启用实验性联网搜索", swWebSearch));
+        card.addView(switchRow("实验性网络搜索", swWebSearch));
 
         // --keepalive（模型驻留时长）
         LinearLayout kaWrap = new LinearLayout(this);
@@ -463,33 +513,21 @@ public class SettingsActivity extends Activity {
         return card;
     }
 
-    /** 一个「文字说明 + Switch」行。 */
-    private LinearLayout switchRow(String title, String desc, Switch sw) {
+    /** 一个「开关名 + Switch」行（不带说明小字）。 */
+    private LinearLayout switchRow(String title, Switch sw) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(0, dp(4), 0, dp(4));
-
-        LinearLayout textWrap = new LinearLayout(this);
-        textWrap.setOrientation(LinearLayout.VERTICAL);
-        textWrap.setLayoutParams(new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         TextView t = new TextView(this);
         t.setText(title);
         t.setTextSize(14);
         t.setTypeface(null, Typeface.BOLD);
         t.setTextColor(C_TEXT);
-        textWrap.addView(t);
-
-        TextView d = new TextView(this);
-        d.setText(desc);
-        d.setTextSize(11);
-        d.setTextColor(C_TEXT_SUB);
-        d.setPadding(0, dp(1), 0, 0);
-        textWrap.addView(d);
-
-        row.addView(textWrap);
+        t.setLayoutParams(new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(t);
         row.addView(sw);
         return row;
     }
@@ -656,10 +694,13 @@ public class SettingsActivity extends Activity {
     // ================= 读取 / 保存 =================
 
     private void loadPrefs() {
+        applyingGpuSelection = true;
         String gpu = Prefs.gpuBackend(this);
         if (Prefs.GPU_VULKAN.equals(gpu)) rVulkan.setChecked(true);
         else if (Prefs.GPU_OPENCL.equals(gpu)) rOpencl.setChecked(true);
+        else if (Prefs.GPU_MIX.equals(gpu)) rMix.setChecked(true);
         else rCpu.setChecked(true);
+        applyingGpuSelection = false;
 
         swVerbose.setChecked(Prefs.verbose(this));
         swNoWordWrap.setChecked(Prefs.noWordWrap(this));
@@ -679,6 +720,7 @@ public class SettingsActivity extends Activity {
         String gpu = Prefs.GPU_CPU;
         if (rVulkan.isChecked()) gpu = Prefs.GPU_VULKAN;
         else if (rOpencl.isChecked()) gpu = Prefs.GPU_OPENCL;
+        else if (rMix.isChecked()) gpu = Prefs.GPU_MIX;
         Prefs.setGpuBackend(this, gpu);
 
         Prefs.setVerbose(this, swVerbose.isChecked());
