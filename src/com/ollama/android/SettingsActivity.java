@@ -258,7 +258,7 @@ public class SettingsActivity extends Activity {
         card.addView(rg);
 
         TextView hint = new TextView(this);
-        hint.setText("选中即保存，重启服务后生效；配合下方 num_gpu 层数即可 CPU+GPU 混合运算");
+        hint.setText("默认 CPU，最稳；填了 GPU 层数（num_gpu）会自动启用 GPU 加速做混合运算，不用手动切后端");
         hint.setTextSize(12);
         hint.setTextColor(C_TEXT_SUB);
         hint.setPadding(0, dp(6), 0, 0);

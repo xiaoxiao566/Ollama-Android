@@ -121,17 +121,26 @@ public class OllamaService extends Service {
     }
 
     private void logStartupConfig() {
-        String gpu = Prefs.gpuBackend(this);
-        String gpuDesc;
-        if (Prefs.GPU_VULKAN.equals(gpu)) {
-            gpuDesc = "Vulkan" + (runner.hasVulkanBackend() ? "（已内置后端）" : "（未内置后端，日志将看不到 vulkan 设备，会回退 CPU）");
-        } else if (Prefs.GPU_OPENCL.equals(gpu)) {
-            gpuDesc = "OpenCL（现代 llama.cpp 已移除该后端，实际回退 CPU）";
+        // 运算方式 = CPU / CPU+GPU 混合，由 GPU 层数决定：
+        // 填了层数（-1 或具体数字）即自动启用 GPU 加速，默认不填就是纯 CPU。
+        String ng = Prefs.getStr(this, "num_gpu").trim();
+        boolean wantGpu = !ng.isEmpty() && !"0".equals(ng);
+        boolean gpuAccel = Prefs.GPU_VULKAN.equals(Prefs.gpuBackend(this)) || wantGpu;
+
+        String mode;
+        if (ng.isEmpty()) {
+            mode = "纯 CPU（未设置 GPU 层数，想混合可在弹窗或设置里填层数）";
+        } else if ("0".equals(ng)) {
+            mode = "纯 CPU";
+        } else if ("-1".equals(ng)) {
+            mode = "CPU + GPU 混合（GPU 自动分配层数，装不下自动回退 CPU）";
         } else {
-            gpuDesc = "CPU";
+            mode = "CPU + GPU 混合（前 " + ng + " 层走 GPU，其余走 CPU）";
         }
         appendLog("== 运行配置 ==");
-        appendLog("GPU 后端: " + gpuDesc);
+        appendLog("运算方式: " + mode);
+        appendLog("GPU 加速: " + (gpuAccel && runner.hasVulkanBackend()
+                ? "已启用" : (gpuAccel ? "未启用（缺少 GPU 后端库，实际纯 CPU）" : "未启用")));
         appendLog("监听地址: " + Prefs.bindAddress(this));
         String thr = Prefs.getStr(this, "OLLAMA_NUM_THREADS").trim();
         appendLog("线程数: " + (thr.isEmpty() ? "自动（限制 ≤4，防发热降频卡顿）" : thr));
@@ -140,7 +149,6 @@ public class OllamaService extends Service {
         String par = Prefs.getStr(this, "OLLAMA_NUM_PARALLEL").trim();
         appendLog("并行度: " + (par.isEmpty() ? "1（内存不足 8GB 时自动限制）" : par));
         appendLog("上下文长度: " + Prefs.numCtx(this));
-        appendLog("GPU 层数: " + (Prefs.numGpu(this) < 0 ? "自动" : Prefs.numGpu(this)));
     }
 
     private void stopServer() {

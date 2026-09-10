@@ -33,7 +33,7 @@ public final class OllamaRunner {
     public static final int PORT = 11434;
 
     /** 与 ollama-termux 一致的 TERMUX 版本号标识，仅用于 IsTermux() 判空。 */
-    private static final String TERMUX_VERSION = "0.118.0";
+    private static final String TERMUX_VERSION = "0.119.0 beta3";
     private static final String SYSTEM_LINKER = "/system/bin/linker64";
 
     private final Context context;
@@ -208,7 +208,11 @@ public final class OllamaRunner {
         prepare();
         File exe = new File(libOllama, "ollama");
         String gpu = Prefs.gpuBackend(context);
-        boolean vulkan = Prefs.GPU_VULKAN.equals(gpu);
+        // 填了 GPU 层数（-1 或具体数字）就自动启用 GPU 加速做 CPU+GPU 混合，
+        // 不用再先去设置页选后端；没填层数时按设置页选择（默认 CPU 最稳）。
+        String numGpuStr = Prefs.getStr(context, "num_gpu").trim();
+        boolean wantGpu = !numGpuStr.isEmpty() && !"0".equals(numGpuStr);
+        boolean vulkan = Prefs.GPU_VULKAN.equals(gpu) || wantGpu;
 
         List<String> cmd = new ArrayList<String>();
         cmd.add(SYSTEM_LINKER);

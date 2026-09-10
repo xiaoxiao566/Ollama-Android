@@ -181,12 +181,10 @@ public class MainActivity extends Activity {
 
         new AlertDialog.Builder(this)
                 .setTitle("CPU + GPU 混合运算")
-                .setMessage("让模型一部分层在 GPU 上算、剩下的在 CPU 上算，速度和内存两头兼顾。\n\n"
-                        + "你手机内存约 " + gb + " GB，推荐 " + rec + " 层。\n\n"
-                        + "· -1：全部交给 GPU（装不下会自动回退）\n"
-                        + "· 0：纯 CPU 运算\n"
-                        + "· 具体数字（如 " + rec + "）：前 " + rec + " 层走 GPU，其余走 CPU\n\n"
-                        + "需要「设置 → GPU 后端」选 Vulkan 才生效，之后可在设置里随时改。")
+                .setMessage("设备内存约 " + gb + " GB（可能不是很准）\n\n"
+                        + "推荐 " + rec + " 层\n\n"
+                        + "-1 为完全由 GPU 运算，0 是 CPU，如果你填的是具体的数字，例如\"10\"则是十层走 GPU，剩下来的全部走 CPU\n\n"
+                        + "GPU 层数想改的自己去设置调")
                 .setView(input)
                 .setPositiveButton("确定", new DialogInterface.OnClickListener() {
                     @Override public void onClick(DialogInterface d, int w) {
