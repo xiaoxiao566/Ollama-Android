@@ -287,8 +287,8 @@ public final class OllamaRunner {
         return pb;
     }
 
-    /** 读取 /proc/meminfo 的总内存（MB），失败返回 0。 */
-    private static long totalMemMB() {
+    /** 读取 /proc/meminfo 的总内存（MB），失败返回 0。主界面推荐 GPU 层数时也会用到。 */
+    static long totalMemMB() {
         try {
             java.io.BufferedReader r = new java.io.BufferedReader(
                     new java.io.InputStreamReader(new java.io.FileInputStream("/proc/meminfo")));

@@ -71,7 +71,7 @@ public class SettingsActivity extends Activity {
             new Param("OLLAMA_NUM_THREADS", "OLLAMA_NUM_THREADS", "服务端计算线程数"),
             new Param("num_ctx", "num_ctx", "上下文长度（token），默认 4096"),
             new Param("num_predict", "num_predict", "单次最多生成 token 数，-1 不限制"),
-            new Param("num_gpu", "num_gpu", "GPU 层数，-1 自动分配"),
+            new Param("num_gpu", "num_gpu", "GPU 层数：-1 自动，0 纯 CPU，>0 前 N 层走 GPU（CPU+GPU 混合运算）"),
             new Param("num_thread", "num_thread", "推理线程数，0 自动"),
             new Param("temperature", "temperature", "温度，越高越随机（0.8 常用）"),
             new Param("top_p", "top_p", "核采样，1 关闭"),
@@ -258,7 +258,7 @@ public class SettingsActivity extends Activity {
         card.addView(rg);
 
         TextView hint = new TextView(this);
-        hint.setText("切换即时保存，重启服务后生效");
+        hint.setText("选中即保存，重启服务后生效；配合下方 num_gpu 层数即可 CPU+GPU 混合运算");
         hint.setTextSize(12);
         hint.setTextColor(C_TEXT_SUB);
         hint.setPadding(0, dp(6), 0, 0);

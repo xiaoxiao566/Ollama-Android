@@ -39,10 +39,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 
 /**
- * 主界面：液态玻璃（Liquid Glass）风格。
- * 顶部液态玻璃标题栏 → 运行日志（挪到上方）→ 中部内容区
- * （状态、启动/停止玻璃按钮、模型管理、气泡式对话）。
- * 对话中模型的思考过程（reasoning）以粗体显示在模型气泡内。
+ * 主界面。从上到下：标题栏、可收起的运行日志、服务状态与启停、
+ * 模型管理、气泡式对话。思考过程会以粗体显示在模型气泡里。
  */
 public class MainActivity extends Activity {
 
@@ -98,6 +96,7 @@ public class MainActivity extends Activity {
         applyEdgeToEdge(root);
         requestNotificationPermissionIfNeeded();
         requestStoragePermissionIfNeeded();
+        maybeAskGpuLayers();
     }
 
     /** 全面屏适配：内容延伸到状态栏底下，按系统安全区上边距垫入 padding。 */
@@ -158,6 +157,59 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         try { unregisterReceiver(receiver); } catch (Exception ignored) {}
+    }
+
+    // ================= CPU+GPU 混合运算（GPU 层数） =================
+
+    /**
+     * 首次打开时弹窗问一下 GPU 层数：0 纯 CPU，>0 前 N 层走 GPU 其余走 CPU，
+     * -1 全部交给 GPU（装不下会自动回退）。设过就不再打扰，想改随时去设置页。
+     */
+    private void maybeAskGpuLayers() {
+        if (!Prefs.getStr(this, "num_gpu").isEmpty()) {
+            return;
+        }
+        long gb = OllamaRunner.totalMemMB() / 1024;
+        int rec = recommendGpuLayers();
+
+        final EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED);
+        input.setText(String.valueOf(rec));
+        input.setSelection(input.getText().length());
+        input.setTextSize(16);
+        input.setPadding(dp(14), dp(10), dp(14), dp(10));
+
+        new AlertDialog.Builder(this)
+                .setTitle("CPU + GPU 混合运算")
+                .setMessage("让模型一部分层在 GPU 上算、剩下的在 CPU 上算，速度和内存两头兼顾。\n\n"
+                        + "你手机内存约 " + gb + " GB，推荐 " + rec + " 层。\n\n"
+                        + "· -1：全部交给 GPU（装不下会自动回退）\n"
+                        + "· 0：纯 CPU 运算\n"
+                        + "· 具体数字（如 " + rec + "）：前 " + rec + " 层走 GPU，其余走 CPU\n\n"
+                        + "需要「设置 → GPU 后端」选 Vulkan 才生效，之后可在设置里随时改。")
+                .setView(input)
+                .setPositiveButton("确定", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        String v = input.getText().toString().trim();
+                        if (v.isEmpty()) {
+                            return;
+                        }
+                        Prefs.setStr(MainActivity.this, "num_gpu", v);
+                        Toast.makeText(MainActivity.this,
+                                "GPU 层数已设为 " + v + "，重启服务后生效", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("跳过", null)
+                .show();
+    }
+
+    /** 按内存粗略估个层数：内存越大越激进，小内存保守点，免得显存不够反而更卡。 */
+    private int recommendGpuLayers() {
+        long gb = OllamaRunner.totalMemMB() / 1024;
+        if (gb >= 12) return 32;
+        if (gb >= 8) return 24;
+        if (gb >= 6) return 16;
+        return 8;
     }
 
     // ================= UI =================
@@ -251,12 +303,6 @@ public class MainActivity extends Activity {
         title.setTypeface(null, Typeface.BOLD);
         title.setTextColor(C_TEXT);
         titles.addView(title);
-
-        TextView sub = new TextView(this);
-        sub.setText("本地大模型 · 一触即用");
-        sub.setTextSize(12);
-        sub.setTextColor(C_TEXT_SUB);
-        titles.addView(sub);
 
         header.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
 
@@ -427,13 +473,6 @@ public class MainActivity extends Activity {
 
         chatContainer = new LinearLayout(this);
         chatContainer.setOrientation(LinearLayout.VERTICAL);
-        TextView hint = new TextView(this);
-        hint.setText("对话会显示在这里\n（模型带思考过程时会以粗体写在气泡内）");
-        hint.setTextSize(13);
-        hint.setTextColor(C_TEXT_SUB);
-        hint.setGravity(Gravity.CENTER);
-        hint.setPadding(0, dp(16), 0, dp(8));
-        chatContainer.addView(hint);
         card.addView(chatContainer, matchWidth(-2));
         return card;
     }
@@ -944,28 +983,6 @@ public class MainActivity extends Activity {
             sb.setLength(sb.length() - 1);
         }
         return sb.toString();
-    }
-
-    /** --verbose：从 /api/chat 非流式响应解析推理速度统计。 */
-    private String buildSpeedStats(String resp) {
-        long evalCount = parseLongSafe(extractJsonField(resp, "eval_count"), 0);
-        if (evalCount <= 0) {
-            return "";
-        }
-        long evalNs = parseLongSafe(extractJsonField(resp, "eval_duration"), 0);
-        long totalNs = parseLongSafe(extractJsonField(resp, "total_duration"), 0);
-        StringBuilder s = new StringBuilder("\n\n推理速度: ");
-        if (evalNs > 0) {
-            s.append(String.format(java.util.Locale.US, "%.1f", evalCount * 1e9 / evalNs))
-                    .append(" tokens/s");
-        } else {
-            s.append("-");
-        }
-        s.append(" · 生成 ").append(evalCount).append(" tokens");
-        if (totalNs > 0) {
-            s.append(" · 总耗时 ").append(String.format(java.util.Locale.US, "%.1f", totalNs / 1e9)).append("s");
-        }
-        return s.toString();
     }
 
     private static long parseLongSafe(String s, long def) {
