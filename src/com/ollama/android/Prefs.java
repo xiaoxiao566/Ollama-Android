@@ -208,6 +208,15 @@ public final class Prefs {
         sp(c).edit().putBoolean(KEY_LOG_COLLAPSED, v).apply();
     }
 
+    /** 日志面板展开时的高度（dp），默认 150，可拖拽调整。 */
+    public static int logHeightDp(Context c) {
+        return parseInt(getStr(c, "log_height_dp"), 150);
+    }
+
+    public static void setLogHeightDp(Context c, int dp) {
+        setStr(c, "log_height_dp", String.valueOf(dp));
+    }
+
     /** 组装成 ollama 可用的 host:port 形式。 */
     public static String bindAddress(Context c) {
         return host(c) + ":" + port(c);

@@ -20,6 +20,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.style.StyleSpan;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -242,11 +243,11 @@ public class MainActivity extends Activity {
 
         col.addView(buildHeader());
 
-        // 日志挪到上面：标题栏正下方
+        // 日志挪到上面：标题栏正下方（高度可拖拽调整，见 buildLogPanel 底部把手）
         logPanel = buildLogPanel();
         logExpandBar = buildLogExpandBar();
         col.addView(logPanel, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(150)));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(Prefs.logHeightDp(this))));
         col.addView(logExpandBar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(32)));
 
@@ -529,6 +530,52 @@ public class MainActivity extends Activity {
         logBody = logScroll;
         panel.addView(logScroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        // 底部拖拽把手：按住上下拖调整日志区高度（56dp ~ 屏幕 60%），松手记住
+        LinearLayout dragHandle = new LinearLayout(this);
+        dragHandle.setOrientation(LinearLayout.HORIZONTAL);
+        dragHandle.setGravity(Gravity.CENTER);
+        dragHandle.setPadding(0, dp(6), 0, dp(6));
+
+        View grip = new View(this);
+        GradientDrawable gripBg = new GradientDrawable();
+        gripBg.setCornerRadius(dp(3));
+        gripBg.setColor(0x59FFFFFF);
+        grip.setBackground(gripBg);
+        dragHandle.addView(grip, new LinearLayout.LayoutParams(dp(40), dp(6)));
+
+        dragHandle.setOnTouchListener(new View.OnTouchListener() {
+            private float startY;
+            private int startH;
+
+            @Override public boolean onTouch(View v, MotionEvent e) {
+                switch (e.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        startY = e.getRawY();
+                        startH = logPanel.getLayoutParams().height;
+                        return true;
+                    case MotionEvent.ACTION_MOVE: {
+                        int min = dp(56);
+                        int max = (int) (getResources().getDisplayMetrics().heightPixels * 0.6f);
+                        int h = Math.max(min, Math.min(max, startH + (int) (e.getRawY() - startY)));
+                        ViewGroup.LayoutParams lp = logPanel.getLayoutParams();
+                        lp.height = h;
+                        logPanel.setLayoutParams(lp);
+                        return true;
+                    }
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        float density = getResources().getDisplayMetrics().density;
+                        Prefs.setLogHeightDp(MainActivity.this,
+                                Math.round(logPanel.getLayoutParams().height / density));
+                        return true;
+                    default:
+                        return false;
+                }
+            }
+        });
+        panel.addView(dragHandle, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(18)));
         return panel;
     }
 
